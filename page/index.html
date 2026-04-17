@@ -449,81 +449,94 @@
 
       <div class="trust-card">
         <h3 data-i18n="trust2-title">온톨로지 기반 Hierarchical Graph</h3>
-        <p class="trust-card-desc" data-i18n="trust2-desc">금융 데이터의 성격이 다른만큼 3계층으로 분리 — 독립 업데이트 · Multi-hop 탐색 최적화 · 출처 역추적으로 할루시네이션 방지</p>
+        <p class="trust-card-desc" data-i18n="trust2-desc">금융 데이터의 성격에 따라 3계층으로 분리 설계 — 탐색 효율 · 독립 업데이트 · 출처 역추적을 구조로 해결</p>
 
-        <!-- 3-Layer Diagram -->
+        <!-- 효과 태그 -->
+        <div class="kgh-tags">
+          <span class="kgh-tag kgh-c1" data-i18n="kgh-tag1">Multi-hop 탐색 최적화</span>
+          <span class="kgh-tag kgh-c2" data-i18n="kgh-tag2">레이어별 독립 업데이트</span>
+          <span class="kgh-tag kgh-c3" data-i18n="kgh-tag3">할루시네이션 구조적 방지</span>
+        </div>
+
+        <!-- Idea C: 노드-엣지 계층 다이어그램 -->
         <div class="kgh-diagram">
 
+          <!-- L1 -->
           <div class="kgh-layer kgh-l1">
-            <div class="kgh-layer-header">
-              <span class="kgh-num">L1</span>
-              <span class="kgh-name" data-i18n="hier1-name">Static Nodes</span>
-              <span class="kgh-freq" data-i18n="hier1-freq">수년간 안정</span>
+            <div class="kgh-lhead">
+              <span class="kgh-lnum">L1</span>
+              <span class="kgh-lname" data-i18n="hier1-name">Static Nodes</span>
+              <span class="kgh-lfreq" data-i18n="hier1-freq">구조 고정</span>
             </div>
-            <div class="kgh-nodes">
-              <span>Company</span>
-              <span>Industry</span>
-              <span>Institution</span>
+            <div class="kgh-graph-row">
+              <div class="kgh-node kgh-node-l1">
+                <span class="kgh-node-ico">🏢</span>
+                <span data-i18n="kgh-n1a">현대차</span>
+              </div>
+              <div class="kgh-hedge">
+                <div class="kgh-hedge-line"></div>
+                <span class="kgh-hedge-lbl">BELONGS_TO</span>
+                <span class="kgh-hedge-arr">▶</span>
+              </div>
+              <div class="kgh-node kgh-node-l1">
+                <span class="kgh-node-ico">🏭</span>
+                <span data-i18n="kgh-n1b">자동차산업</span>
+              </div>
             </div>
           </div>
 
-          <div class="kgh-edge">
-            <div class="kgh-edge-line"></div>
-            <span class="kgh-edge-lbl" data-i18n="hier-conn1">참조</span>
-            <div class="kgh-edge-line"></div>
+          <!-- 수직 엣지 L1→L2 -->
+          <div class="kgh-vedge">
+            <div class="kgh-vedge-line"></div>
+            <span class="kgh-vedge-lbl">INVOLVES</span>
+            <span class="kgh-vedge-arr">▼</span>
           </div>
 
+          <!-- L2 -->
           <div class="kgh-layer kgh-l2">
-            <div class="kgh-layer-header">
-              <span class="kgh-num">L2</span>
-              <span class="kgh-name" data-i18n="hier2-name">Event Nodes</span>
-              <span class="kgh-freq" data-i18n="hier2-freq">매일 갱신</span>
+            <div class="kgh-lhead">
+              <span class="kgh-lnum">L2</span>
+              <span class="kgh-lname" data-i18n="hier2-name">Event Nodes</span>
+              <span class="kgh-lfreq" data-i18n="hier2-freq">실시간 수집</span>
             </div>
-            <div class="kgh-nodes">
-              <span>Contract</span>
-              <span>Earnings</span>
-              <span>Regulation</span>
-              <span class="kgh-more">+11</span>
+            <div class="kgh-graph-row kgh-graph-center">
+              <div class="kgh-node kgh-node-l2">
+                <span class="kgh-node-ico">⚡</span>
+                <span data-i18n="kgh-n2a">신공장 건설 계약 체결</span>
+              </div>
             </div>
           </div>
 
-          <div class="kgh-edge">
-            <div class="kgh-edge-line"></div>
-            <span class="kgh-edge-lbl" data-i18n="hier-conn2">뒷받침</span>
-            <div class="kgh-edge-line"></div>
+          <!-- 수직 엣지 L2→L3 -->
+          <div class="kgh-vedge">
+            <div class="kgh-vedge-line"></div>
+            <span class="kgh-vedge-lbl">SUPPORTS</span>
+            <span class="kgh-vedge-arr">▼</span>
           </div>
 
+          <!-- L3 -->
           <div class="kgh-layer kgh-l3">
-            <div class="kgh-layer-header">
-              <span class="kgh-num">L3</span>
-              <span class="kgh-name" data-i18n="hier3-name">Evidence Nodes</span>
-              <span class="kgh-freq" data-i18n="hier3-freq">원문 역추적</span>
+            <div class="kgh-lhead">
+              <span class="kgh-lnum">L3</span>
+              <span class="kgh-lname" data-i18n="hier3-name">Evidence Nodes</span>
+              <span class="kgh-lfreq" data-i18n="hier3-freq">출처 역추적</span>
             </div>
-            <div class="kgh-nodes">
-              <span>DART</span>
-              <span>News</span>
-              <span>IR</span>
+            <div class="kgh-graph-row">
+              <div class="kgh-node kgh-node-l3">
+                <span class="kgh-node-ico">📄</span>
+                <span data-i18n="kgh-n3a">DART 공시 원문</span>
+              </div>
+              <div class="kgh-hedge kgh-hedge-plain">
+                <div class="kgh-hedge-line"></div>
+              </div>
+              <div class="kgh-node kgh-node-l3">
+                <span class="kgh-node-ico">📰</span>
+                <span data-i18n="kgh-n3b">연합뉴스 기사</span>
+              </div>
             </div>
           </div>
 
         </div>
-
-        <!-- 효과 3가지 -->
-        <div class="kgh-effects">
-          <div class="kgh-effect">
-            <span class="kgh-eff-dot kgh-c1"></span>
-            <span data-i18n="kgh-eff1">계층별로 탐색 범위를 좁혀 Multi-hop 경로 명확화</span>
-          </div>
-          <div class="kgh-effect">
-            <span class="kgh-eff-dot kgh-c2"></span>
-            <span data-i18n="kgh-eff2">이벤트 추가가 정적 구조에 영향 없음 — 레이어별 독립 업데이트</span>
-          </div>
-          <div class="kgh-effect">
-            <span class="kgh-eff-dot kgh-c3"></span>
-            <span data-i18n="kgh-eff3">모든 이벤트 주장에 원문 역추적 — 할루시네이션 구조적 방지</span>
-          </div>
-        </div>
-
       </div>
     </div>
   </div>
