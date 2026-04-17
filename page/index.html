@@ -448,31 +448,67 @@
       </div>
 
       <div class="trust-card">
-        <h3 data-i18n="trust2-title">Entity Resolution</h3>
-        <p class="trust-card-desc" data-i18n="trust2-desc">"현대자동차"와 "현대차"를 같은 엔티티로 처리합니다</p>
-        <div class="resolve-cascade">
-          <div class="resolve-step">
-            <span class="resolve-input" data-i18n="resolve1-input">"현대자동차"</span>
-            <span class="resolve-method" data-i18n="resolve1-method">Reference 사전 매칭</span>
+        <h3 data-i18n="trust2-title">온톨로지 기반 계층적 지식 그래프</h3>
+        <p class="trust-card-desc" data-i18n="trust2-desc">금융 데이터는 성격이 다르다 — 3계층으로 분리해 독립 업데이트 · 출처 역추적 구현</p>
+
+        <div class="hier-layers">
+          <div class="hier-layer" data-hlayer="1">
+            <div class="hier-layer-head">
+              <span class="hier-badge">L1</span>
+              <strong data-i18n="hier1-name">Static Nodes</strong>
+              <span class="hier-freq" data-i18n="hier1-freq">수년간 안정</span>
+            </div>
+            <p class="hier-desc" data-i18n="hier1-desc">기업 · 산업 · 기관 — 잘 바뀌지 않는 사실 레이어. "자동차 산업" 질의 시 현대차 · 기아 · 모비스를 한번에 묶어 탐색</p>
+            <div class="hier-tags">
+              <span>Company</span><span>Industry</span><span>Institution</span>
+            </div>
           </div>
-          <div class="resolve-arrow">&darr;</div>
-          <div class="resolve-step">
-            <span class="resolve-input" data-i18n="resolve2-input">"현대차"</span>
-            <span class="resolve-method">Fuzzy Match</span>
+
+          <div class="hier-connector">
+            <div class="hier-conn-arrow"></div>
+            <span class="hier-conn-label" data-i18n="hier-conn1">참조</span>
           </div>
-          <div class="resolve-arrow">&darr;</div>
-          <div class="resolve-step">
-            <span class="resolve-input">"HMC"</span>
-            <span class="resolve-method" data-i18n="resolve3-method">Rule 기반 정규화</span>
+
+          <div class="hier-layer" data-hlayer="2">
+            <div class="hier-layer-head">
+              <span class="hier-badge">L2</span>
+              <strong data-i18n="hier2-name">Event Nodes</strong>
+              <span class="hier-freq" data-i18n="hier2-freq">매일 갱신</span>
+            </div>
+            <p class="hier-desc" data-i18n="hier2-desc">14유형 금융 이벤트 — FIBO 온톨로지 기반 설계. 유가 상승 → 영향 → 원유 수입 기업 비용 흐름으로 구성</p>
+            <div class="hier-tags">
+              <span>Contract</span><span>Earnings</span><span>Regulation</span><span class="hier-tag-more">+11</span>
+            </div>
           </div>
-          <div class="resolve-arrow">&darr;</div>
-          <div class="resolve-step">
-            <span class="resolve-input" data-i18n="resolve4-input">미분류 mention</span>
-            <span class="resolve-method" data-i18n="resolve4-method">LLM 최종 판단</span>
+
+          <div class="hier-connector">
+            <div class="hier-conn-arrow"></div>
+            <span class="hier-conn-label" data-i18n="hier-conn2">뒷받침</span>
           </div>
-          <div class="resolve-arrow">&darr;</div>
-          <div class="resolve-result">
-            <code>canonical_entity_id</code>
+
+          <div class="hier-layer" data-hlayer="3">
+            <div class="hier-layer-head">
+              <span class="hier-badge">L3</span>
+              <strong data-i18n="hier3-name">Evidence Nodes</strong>
+              <span class="hier-freq" data-i18n="hier3-freq">원문 역추적</span>
+            </div>
+            <p class="hier-desc" data-i18n="hier3-desc">이벤트를 뒷받침하는 공시 · 뉴스 원문 문장. 모든 주장에 근거 역추적 → 할루시네이션 구조적 방지</p>
+            <div class="hier-tags">
+              <span>DART</span><span>News</span><span>IR</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="hier-query-flow">
+          <span class="hier-qf-label" data-i18n="hier-qf-label">QUERY FLOW</span>
+          <div class="hier-qf-steps">
+            <span data-i18n="hier-qf1">L1: 현대차 노드</span>
+            <span class="hier-qf-arr">&rarr;</span>
+            <span data-i18n="hier-qf2">L2: 계약 이벤트</span>
+            <span class="hier-qf-arr">&rarr;</span>
+            <span data-i18n="hier-qf3">L3: 공시 원문</span>
+            <span class="hier-qf-arr">&rarr;</span>
+            <span>LLM Context</span>
           </div>
         </div>
       </div>
