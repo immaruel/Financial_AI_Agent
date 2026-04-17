@@ -458,85 +458,107 @@
           <span class="kgh-tag kgh-c3" data-i18n="kgh-tag3">할루시네이션 구조적 방지</span>
         </div>
 
-        <!-- Idea C: 노드-엣지 계층 다이어그램 -->
-        <div class="kgh-diagram">
+        <!-- SVG 트리 그래프 -->
+        <svg class="kgh-svg" viewBox="0 0 460 282" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <!-- 화살촉 마커 -->
+            <marker id="arr-l1" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+              <path d="M0,0.5 L0,6.5 L6.5,3.5 z" fill="#4FC3F7"/>
+            </marker>
+            <marker id="arr-mid" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+              <path d="M0,0.5 L0,6.5 L6.5,3.5 z" fill="#9ca3af"/>
+            </marker>
+            <marker id="arr-l3" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+              <path d="M0,0.5 L0,6.5 L6.5,3.5 z" fill="#FFD54F"/>
+            </marker>
+          </defs>
 
-          <!-- L1 -->
-          <div class="kgh-layer kgh-l1">
-            <div class="kgh-lhead">
-              <span class="kgh-lnum">L1</span>
-              <span class="kgh-lname" data-i18n="hier1-name">Static Nodes</span>
-              <span class="kgh-lfreq" data-i18n="hier1-freq">구조 고정</span>
-            </div>
-            <div class="kgh-graph-row">
-              <div class="kgh-node kgh-node-l1">
-                <span class="kgh-node-ico">🏢</span>
-                <span data-i18n="kgh-n1a">현대차</span>
-              </div>
-              <div class="kgh-hedge">
-                <div class="kgh-hedge-line"></div>
-                <span class="kgh-hedge-lbl">BELONGS_TO</span>
-                <span class="kgh-hedge-arr">▶</span>
-              </div>
-              <div class="kgh-node kgh-node-l1">
-                <span class="kgh-node-ico">🏭</span>
-                <span data-i18n="kgh-n1b">자동차산업</span>
-              </div>
-            </div>
-          </div>
+          <!-- ── 엣지 (노드보다 먼저 그림) ── -->
 
-          <!-- 수직 엣지 L1→L2 -->
-          <div class="kgh-vedge">
-            <div class="kgh-vedge-line"></div>
-            <span class="kgh-vedge-lbl">INVOLVES</span>
-            <span class="kgh-vedge-arr">▼</span>
-          </div>
+          <!-- 현대차 ─BELONGS_TO→ 자동차산업 -->
+          <line x1="147" y1="60" x2="313" y2="60"
+                stroke="#4FC3F7" stroke-width="1.5" stroke-opacity="0.55"
+                marker-end="url(#arr-l1)"/>
+          <text x="230" y="51" text-anchor="middle"
+                font-family="'JetBrains Mono',monospace" font-size="9" fill="#6b7280">BELONGS_TO</text>
 
-          <!-- L2 -->
-          <div class="kgh-layer kgh-l2">
-            <div class="kgh-lhead">
-              <span class="kgh-lnum">L2</span>
-              <span class="kgh-lname" data-i18n="hier2-name">Event Nodes</span>
-              <span class="kgh-lfreq" data-i18n="hier2-freq">실시간 수집</span>
-            </div>
-            <div class="kgh-graph-row kgh-graph-center">
-              <div class="kgh-node kgh-node-l2">
-                <span class="kgh-node-ico">⚡</span>
-                <span data-i18n="kgh-n2a">신공장 건설 계약 체결</span>
-              </div>
-            </div>
-          </div>
+          <!-- 현대차 ─INVOLVES→ 신공장 -->
+          <line x1="136" y1="84" x2="193" y2="132"
+                stroke="#9ca3af" stroke-width="1.5" stroke-opacity="0.5"
+                marker-end="url(#arr-mid)"/>
+          <text text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" fill="#6b7280"
+                transform="translate(156,114) rotate(37)">INVOLVES</text>
 
-          <!-- 수직 엣지 L2→L3 -->
-          <div class="kgh-vedge">
-            <div class="kgh-vedge-line"></div>
-            <span class="kgh-vedge-lbl">SUPPORTS</span>
-            <span class="kgh-vedge-arr">▼</span>
-          </div>
+          <!-- 자동차산업 ─INVOLVES→ 신공장 -->
+          <line x1="324" y1="84" x2="267" y2="132"
+                stroke="#9ca3af" stroke-width="1.5" stroke-opacity="0.5"
+                marker-end="url(#arr-mid)"/>
+          <text text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" fill="#6b7280"
+                transform="translate(304,114) rotate(-37)">INVOLVES</text>
 
-          <!-- L3 -->
-          <div class="kgh-layer kgh-l3">
-            <div class="kgh-lhead">
-              <span class="kgh-lnum">L3</span>
-              <span class="kgh-lname" data-i18n="hier3-name">Evidence Nodes</span>
-              <span class="kgh-lfreq" data-i18n="hier3-freq">출처 역추적</span>
-            </div>
-            <div class="kgh-graph-row">
-              <div class="kgh-node kgh-node-l3">
-                <span class="kgh-node-ico">📄</span>
-                <span data-i18n="kgh-n3a">DART 공시 원문</span>
-              </div>
-              <div class="kgh-hedge kgh-hedge-plain">
-                <div class="kgh-hedge-line"></div>
-              </div>
-              <div class="kgh-node kgh-node-l3">
-                <span class="kgh-node-ico">📰</span>
-                <span data-i18n="kgh-n3b">연합뉴스 기사</span>
-              </div>
-            </div>
-          </div>
+          <!-- 신공장 ─SUPPORTS→ DART공시 -->
+          <line x1="193" y1="179" x2="148" y2="208"
+                stroke="#FFD54F" stroke-width="1.5" stroke-opacity="0.55"
+                marker-end="url(#arr-l3)"/>
+          <text text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" fill="#6b7280"
+                transform="translate(161,200) rotate(-33)">SUPPORTS</text>
 
-        </div>
+          <!-- 신공장 ─SUPPORTS→ 연합뉴스 -->
+          <line x1="267" y1="179" x2="312" y2="208"
+                stroke="#FFD54F" stroke-width="1.5" stroke-opacity="0.55"
+                marker-end="url(#arr-l3)"/>
+          <text text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" fill="#6b7280"
+                transform="translate(299,200) rotate(33)">SUPPORTS</text>
+
+          <!-- ── L1 노드 ── -->
+
+          <!-- 현대차 -->
+          <circle cx="105" cy="60" r="40" fill="rgba(79,195,247,0.1)" stroke="#4FC3F7" stroke-width="1.8"/>
+          <text x="105" y="54" text-anchor="middle" font-size="15">🏢</text>
+          <text x="105" y="70" text-anchor="middle"
+                font-family="'Inter',sans-serif" font-size="11.5" font-weight="600" fill="#4FC3F7" data-i18n="kgh-n1a">현대차</text>
+
+          <!-- 자동차산업 -->
+          <circle cx="355" cy="60" r="40" fill="rgba(79,195,247,0.1)" stroke="#4FC3F7" stroke-width="1.8"/>
+          <text x="355" y="54" text-anchor="middle" font-size="15">🏭</text>
+          <text x="355" y="70" text-anchor="middle"
+                font-family="'Inter',sans-serif" font-size="11.5" font-weight="600" fill="#4FC3F7" data-i18n="kgh-n1b">자동차산업</text>
+
+          <!-- L1 레이어 레이블 -->
+          <text x="6" y="63" font-family="'JetBrains Mono',monospace" font-size="9" fill="#4FC3F7" opacity="0.6">L1</text>
+
+          <!-- ── L2 노드 ── -->
+
+          <!-- 신공장 계약 체결 -->
+          <ellipse cx="230" cy="155" rx="100" ry="28" fill="rgba(255,138,101,0.1)" stroke="#FF8A65" stroke-width="1.8"/>
+          <text x="230" y="150" text-anchor="middle" font-size="13">⚡</text>
+          <text x="230" y="164" text-anchor="middle"
+                font-family="'Inter',sans-serif" font-size="11" font-weight="600" fill="#FF8A65" data-i18n="kgh-n2a">신공장 계약 체결</text>
+
+          <!-- L2 레이어 레이블 -->
+          <text x="6" y="159" font-family="'JetBrains Mono',monospace" font-size="9" fill="#FF8A65" opacity="0.6">L2</text>
+
+          <!-- ── L3 노드 ── -->
+
+          <!-- DART 공시 원문 -->
+          <circle cx="113" cy="240" r="38" fill="rgba(255,213,79,0.1)" stroke="#FFD54F" stroke-width="1.8"/>
+          <text x="113" y="234" text-anchor="middle" font-size="14">📄</text>
+          <text x="113" y="247" text-anchor="middle"
+                font-family="'Inter',sans-serif" font-size="10.5" font-weight="600" fill="#FFD54F">DART</text>
+          <text x="113" y="259" text-anchor="middle"
+                font-family="'Inter',sans-serif" font-size="9.5" fill="#FFD54F" opacity="0.75" data-i18n="kgh-n3a-sub">공시 원문</text>
+
+          <!-- 연합뉴스 기사 -->
+          <circle cx="347" cy="240" r="38" fill="rgba(255,213,79,0.1)" stroke="#FFD54F" stroke-width="1.8"/>
+          <text x="347" y="234" text-anchor="middle" font-size="14">📰</text>
+          <text x="347" y="247" text-anchor="middle"
+                font-family="'Inter',sans-serif" font-size="10.5" font-weight="600" fill="#FFD54F" data-i18n="kgh-n3b-top">연합뉴스</text>
+          <text x="347" y="259" text-anchor="middle"
+                font-family="'Inter',sans-serif" font-size="9.5" fill="#FFD54F" opacity="0.75" data-i18n="kgh-n3b-sub">기사</text>
+
+          <!-- L3 레이어 레이블 -->
+          <text x="6" y="243" font-family="'JetBrains Mono',monospace" font-size="9" fill="#FFD54F" opacity="0.6">L3</text>
+        </svg>
       </div>
     </div>
   </div>

@@ -645,7 +645,7 @@ a:hover { text-decoration: underline; }
 }
 
 /* =============================================
-   Hierarchical KG Diagram (Idea C)
+   Hierarchical KG — SVG Tree Graph
    ============================================= */
 
 /* --- 효과 태그 --- */
@@ -653,7 +653,7 @@ a:hover { text-decoration: underline; }
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 .kgh-tag {
   font-family: var(--font-mono);
@@ -667,127 +667,11 @@ a:hover { text-decoration: underline; }
 .kgh-c2 { color: #FF8A65; border-color: rgba(255,138,101,0.45); background: rgba(255,138,101,0.08); }
 .kgh-c3 { color: #FFD54F; border-color: rgba(255,213,79,0.45);  background: rgba(255,213,79,0.08); }
 
-/* --- 다이어그램 컨테이너 --- */
-.kgh-diagram {
-  display: flex;
-  flex-direction: column;
-}
-
-/* --- 레이어 박스 --- */
-.kgh-layer {
-  border-radius: 8px;
-  border: 1px solid;
-  padding: 12px 14px;
-}
-.kgh-l1 { background: rgba(79,195,247,0.06);  border-color: rgba(79,195,247,0.28); }
-.kgh-l2 { background: rgba(255,138,101,0.06); border-color: rgba(255,138,101,0.28); }
-.kgh-l3 { background: rgba(255,213,79,0.06);  border-color: rgba(255,213,79,0.28); }
-
-/* 레이어 헤더 */
-.kgh-lhead {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin-bottom: 10px;
-}
-.kgh-lnum {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 4px;
-}
-.kgh-l1 .kgh-lnum { color: #4FC3F7; background: rgba(79,195,247,0.15); }
-.kgh-l2 .kgh-lnum { color: #FF8A65; background: rgba(255,138,101,0.15); }
-.kgh-l3 .kgh-lnum { color: #FFD54F; background: rgba(255,213,79,0.15); }
-
-.kgh-lname {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-}
-.kgh-lfreq {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-muted);
-}
-
-/* --- 노드 행 --- */
-.kgh-graph-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.kgh-graph-center { justify-content: center; }
-
-/* 노드 칩 */
-.kgh-node {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 11px;
-  border-radius: 20px;
-  border: 1px solid;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-.kgh-node-ico { font-size: 12px; line-height: 1; }
-
-.kgh-node-l1 { color: #4FC3F7; background: rgba(79,195,247,0.1);  border-color: rgba(79,195,247,0.4); }
-.kgh-node-l2 { color: #FF8A65; background: rgba(255,138,101,0.1); border-color: rgba(255,138,101,0.4); }
-.kgh-node-l3 { color: #FFD54F; background: rgba(255,213,79,0.1);  border-color: rgba(255,213,79,0.4); }
-
-/* 수평 엣지 (레이어 내부) */
-.kgh-hedge {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  flex: 1;
-  min-width: 40px;
-}
-.kgh-hedge-line {
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-}
-.kgh-hedge-lbl {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-.kgh-hedge-arr {
-  font-size: 8px;
-  color: var(--text-muted);
-}
-.kgh-hedge-plain .kgh-hedge-line { background: var(--border); }
-
-/* 수직 엣지 (레이어 간) */
-.kgh-vedge {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 3px 0;
-  gap: 1px;
-}
-.kgh-vedge-line {
-  width: 1px;
-  height: 8px;
-  background: var(--border);
-}
-.kgh-vedge-lbl {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--text-muted);
-  letter-spacing: 0.5px;
-  line-height: 1.5;
-}
-.kgh-vedge-arr {
-  font-size: 7px;
-  color: var(--text-muted);
-  line-height: 1;
+/* --- SVG 그래프 --- */
+.kgh-svg {
+  width: 100%;
+  display: block;
+  overflow: visible;
 }
 
 /* =============================================
