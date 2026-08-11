@@ -174,7 +174,7 @@ passage_index.passages[passage_id] = PassageRecord(
 )
 ```
 
-The structure of `PassageIndex` is defined in [03_knowledge_graph/02_graph_schema.md §4](02_graph_schema.md). The component that actually queries it is [04_agent_system/04_evidence_retriever.md §3.2](../04_agent_system/04_evidence_retriever.md).
+The structure of `PassageIndex` is defined in [03_knowledge_graph/02_graph_schema.md §4](02_graph_schema.md). The components that actually query it are [04_agent_system/03_retrieval_workers.md](../04_agent_system/03_retrieval_workers.md) and [04_agent_system/04_evidence_and_claims.md](../04_agent_system/04_evidence_and_claims.md).
 
 ---
 
@@ -190,7 +190,7 @@ The structure of `PassageIndex` is defined in [03_knowledge_graph/02_graph_schem
 ### Downstream
 
 - `InMemoryGraphStore` → stores loaded nodes and edges
-- `agent/agents.py` → `GraphRetrieverAgent` explores `InMemoryGraphStore`
+- `retrieval/graph.py` → `GraphRetrievalWorker` explores `InMemoryGraphStore` ([04_agent_system/03_retrieval_workers.md](../04_agent_system/03_retrieval_workers.md))
 - `main.py` → uses `save_graph()` / `load_graph()` for JSON serialization
 
 ### External Dependencies

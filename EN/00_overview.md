@@ -1,5 +1,7 @@
 # 00. System Overview
 
+> KPI extraction, backfill, and KPI time-series revision management are intentionally out of scope for this system.
+
 ---
 
 ## 1. Project Background and Motivation
@@ -13,14 +15,20 @@ In particular, a simple text-search-based RAG architecture has the following lim
 - **Limited multi-hop reasoning**: It is not well suited to multi-step questions such as "through which industries and companies does this policy have an impact?"
 - **Rising operational complexity**: As the pipeline becomes more complex, improvement slows down sharply if we cannot localize where failures occur.
 
-To address this, we manage textual information not as plain documents but as structured knowledge, while also designing a harness engineering layer so that the AI agent can operate reliably without human intervention in the common case.
+To address this, we manage textual information not as plain documents but as structured knowledge, and we design and implement a harness engineering layer alongside it so the AI agent can operate reliably without human intervention in the common case.
 
-```text
+```
 1. Define the core objects and relations in the financial domain as an ontology.
 2. Extract entities and events from filings and news to build a knowledge graph (KG).
-3. When a user query arrives, retrieve the relevant sub-graph.
-4. Use the retrieved sub-graph as the LLM input context.
-5. Monitor each stage through the Constraint / Context / Verification / Feedback Loop harness.
+3. Structure the user query into a QuerySpec, and select graph / lexical / vector / document-block
+   retrieval channels based on the evidence the question actually requires.
+4. Fuse and rerank the selected channels' results into a common EvidenceBlock unit to build the LLM
+   input context.
+5. The LLM produces only atomic claims constrained to evidence IDs; a deterministic verifier and
+   Answer Gate check each claim's citation, numbers, time, and attribution.
+6. On verification failure, a Critic/Supervisor performs a bounded, cause-specific retry or replan;
+   if evidence is still insufficient, the system surfaces uncertainty or stops.
+7. Every stage is monitored by the Constraint / Context / Verification / Feedback Loop harness.
 ```
 
 This approach is expected to deliver higher accuracy and more consistent responses than standard RAG for relation understanding, multi-hop reasoning, and condition-based queries. Finance is a good fit for validating graph-based retrieval because it contains clearly defined entities and relations such as companies, products, transactions, and events.
@@ -33,7 +41,7 @@ This project defines its goals across two layers.
 
 ### 2.1 Product Goal
 
-> **Design and implement an Agentic GraphRAG pipeline that structures financial events such as industries, themes, company information, news, and filings into an ontology-based knowledge graph and uses that graph for reasoning.**
+> **Structure financial events such as industries, themes, company information, news, and filings into an ontology-based knowledge graph, and design and implement an Agentic GraphRAG pipeline that selects, verifies, and recovers retrieval paths per query.**
 
 ### 2.2 Harness Goal
 
@@ -49,7 +57,7 @@ In other words, this document covers not only "what to build," but also "how to 
 |------|-------------|
 | Problem to solve | Provide reliable question answering by structuring financial filings, news, and relationship information |
 | Input data types | DART filings, news articles, reference entity data, user natural-language queries |
-| Output requirements | Evidence-grounded answers, timeline, related companies, citation, risk warning, confidence |
+| Output requirements | Evidence-grounded answers, clickable citations, timeline, related companies, risk warning, confidence |
 | Risks on failure | Company confusion, temporal mismatch, numeric/unit errors, exaggerated causality, unsupported forecasts, investment-advice-like phrasing |
 
 In finance, the following matter more than simple answer accuracy.
@@ -60,7 +68,7 @@ In finance, the following matter more than simple answer accuracy.
 - Whether event causality was overstated
 - Whether investment-advice-like expressions were properly controlled
 
-Because of this, the system must evaluate **offline KG construction quality** and **online Agentic GraphRAG quality** separately, while ultimately maintaining a structure that supports **failure localization**.
+Because of this, the system evaluates **offline KG construction quality** and **online Agentic GraphRAG quality** separately, and maintains a structure that supports **failure localization**.
 
 ---
 
@@ -106,13 +114,13 @@ The following ten principles cut across the full system design.
 |---|-----------|-------------|
 | 1 | **Reliability-centered information structure** | Quantify source quality as a hierarchy: filings (grade 1) > IR (grade 2) > news (grade 3) > analysis (grade 4) > rumors (grade 5) |
 | 2 | **Relationship-centered data modeling** | Structure industries, companies, events, and regulations around relations so that cross-data context is preserved as graph edges |
-| 3 | **Finance-context-first design** | Prioritize structures that can explain event causality, industry impact, and temporal chains |
+| 3 | **Separation of the graph from source evidence** | The graph is a tool for finding relationship candidates; the final factual evidence is always the original-text EvidenceBlock |
 | 4 | **Rule system for large-scale data** | Clearly define trigger dictionaries, entity classes, and event hierarchies in advance |
 | 5 | **JSON-based stage output management** | Support independent re-execution of each stage through Pydantic-schema serialization and checkpoint persistence |
-| 6 | **Use of asynchronous I/O** | Process external API calls asynchronously and in parallel; design CPU-heavy stages for parallelization where possible |
+| 6 | **Asynchronous and parallel execution** | Run external API calls asynchronously and independent retrieval workers in parallel; every worker always returns a success/partial/failure contract |
 | 7 | **Stage-level parameter tuning** | Use `PipelineConfig` to make root-cause tracing and threshold tuning easier |
-| 8 | **Clear tool boundaries** | Separate collection, extraction, graph construction, answer generation, and risk control so responsibilities do not overlap |
-| 9 | **Verifiable context management** | Structure document guidance into executable standards such as ontology/schema/context bundles |
+| 8 | **Clear tool boundaries** | Separate collection, extraction, graph construction, retrieval policy, answer generation, verification, and risk control so responsibilities do not overlap |
+| 9 | **Boundary between deterministic and generative processing** | Reproducible decisions (schema validation, retrieval/fusion, numeric/temporal computation) are fixed in code; the LLM is used only for interpretation and bounded judgment |
 | 10 | **Built-in feedback loop** | Collect failures through trace, metrics, and a failure taxonomy, and include an operational structure for iterative improvement |
 
 ---
@@ -123,12 +131,12 @@ The harness is defined as four layers.
 
 | Layer | Purpose | Role in the financial AI agent |
 |-------|---------|--------------------------------|
-| Constraint Layer | Define agent behavior boundaries | Prohibit investment advice, prohibit unsupported causal claims, restrict tool usage to an allowed scope |
+| Constraint Layer | Define agent behavior boundaries | Prohibit investment advice, prohibit unsupported causal claims, restrict allowed tools/edge types/retry budget |
 | Context Layer | Structure the reference information that must always be consulted | ontology, schema, prompt bundle, eval slice, failure taxonomy, context files |
-| Verification Layer | Output validation and automated evaluation | schema validation, evidence sufficiency, temporal consistency, unsupported claim detection |
-| Feedback Loop Layer | Root-cause analysis and self-repair after failures | trace-based bottleneck analysis, retries, regression detection, updates to rules/prompts/parameters |
+| Verification Layer | Output validation and automated evaluation | schema validation, evidence sufficiency, per-claim citation/numeric/temporal/attribution verification, Answer Gate |
+| Feedback Loop Layer | Root-cause analysis and self-repair after failures | worker failure code → Critic diagnosis → Supervisor's bounded retry/replan, trace-based bottleneck analysis, regression detection |
 
-These four layers apply consistently to both the offline and online pipelines.
+These four layers apply consistently to both the offline and online pipelines. In the online layer they are split between the `agent/` package (most of Constraint and Verification) and `harness/runtime.py` (Feedback Loop, trace, and gating).
 
 ---
 
@@ -155,19 +163,22 @@ The system is divided into two layers, an **offline pipeline** and an **online p
 └──────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────┐
-│                    ONLINE PIPELINE (run per query)                   │
+│           ONLINE PIPELINE (run per query, agent/orchestrator.py)     │
 │                                                                      │
-│  User query                                                          │
-│   -> Query Planner                                                   │
-│   -> Graph Retriever                                                 │
-│   -> Evidence Retriever                                              │
-│   -> Causal Reasoner                                                 │
-│   -> Hypothesis Checker                                              │
-│   -> Answer Composer                                                 │
-│   -> Risk Controller                                                 │
+│  User query + user_id + request_timestamp                            │
+│   -> Query Understanding Agent (LLM) -> deterministic validation/    │
+│      entity resolution                                               │
+│   -> Retrieval Policy Builder (deterministic) -> memory/graph/hybrid/│
+│      document-block workers run in parallel -> Evidence Fusion(RRF)  │
+│      + Rerank                                                        │
+│   -> Evidence Requirement Gate -> Claim-first Generator (LLM)        │
+│   -> Deterministic Verifier (numeric/temporal/attribution/relation)  │
+│      -> Answer Gate                                                  │
+│   -> Critic/Supervisor bounded retry -> Risk warnings -> StructuredAnswer│
 │                                                                      │
 │  [Online Verification]                                               │
-│   evidence sufficiency / temporal consistency / safety / faithfulness│
+│   per-claim citation/numeric/temporal/attribution checks, Answer     │
+│   Gate, harness F1-F8 post-check, human_review_required decision     │
 └──────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -212,10 +223,11 @@ CanonicalEvent                 ← preprocessing/event_canonicalizer.py
       ▼
 GraphPayload                   ← ontology/graph_loader.py
       ▼
-InMemoryGraphStore             ← ontology/graph_loader.py
-      │  7-agent pipeline traversal
+InMemoryGraphStore              ← ontology/graph_loader.py
+      │  (per query) Query Understanding -> Retrieval Policy -> worker execution
+      │  -> Evidence Fusion -> claim generation/verification -> Answer Gate
       ▼
-StructuredAnswer               ← agent/agents.py
+StructuredAnswer                ← agent/orchestrator.py
 ```
 
 From the harness perspective, it is important to leave the following trace at every stage of this flow.
@@ -253,17 +265,17 @@ Human intervention is allowed only in the following situations.
 
 More concretely, an item is routed to human review when at least one of the following conditions is met.
 
-- entity ambiguity exceeds the threshold
-- evidence supporting the core claim is insufficient
-- temporal consistency validation fails
+- entity ambiguity exceeds the threshold (routed to clarification with status `entity_ambiguous`)
+- evidence supporting the core claim is insufficient (blocked by the Evidence Requirement Gate / Answer Gate)
+- numeric/temporal validation fails
 - the risk controller detects high-risk investment phrasing
-- self-repair retry count exceeds the allowed limit
+- the Supervisor's retry limit for the same failure is exceeded (`RETRY_BUDGET_EXHAUSTED`)
 
 ---
 
-## 10. Entropy Management and Evaluation Framework
+## 10. Trace Management and Evaluation Framework
 
-### 10.1 Entropy Management
+### 10.1 Trajectory Management
 
 To prevent the system from degrading over time, we adopt the following operational rules.
 
@@ -291,13 +303,13 @@ Detailed metrics are defined separately by stage in the offline and online docum
 
 | Topic | Document |
 |------|----------|
-| End-to-end agent structure and execution loop | [04_agent_system/01_agent_architecture.md](04_agent_system/01_agent_architecture.md) |
+| End-to-end agent architecture, execution loop, contracts, ledger | [04_agent_system/01_agent_architecture.md](04_agent_system/01_agent_architecture.md) |
+| Query Understanding and Retrieval Policy | [04_agent_system/02_query_understanding_and_routing.md](04_agent_system/02_query_understanding_and_routing.md) |
+| Graph/Hybrid/Document-block retrieval workers | [04_agent_system/03_retrieval_workers.md](04_agent_system/03_retrieval_workers.md) |
+| EvidenceBlock and claim-first generation | [04_agent_system/04_evidence_and_claims.md](04_agent_system/04_evidence_and_claims.md) |
+| Deterministic claim verifier and Answer Gate | [04_agent_system/05_verification_and_answer_gate.md](04_agent_system/05_verification_and_answer_gate.md) |
+| Critic/Supervisor recovery, user memory, risk management | [04_agent_system/06_recovery_memory_and_harness.md](04_agent_system/06_recovery_memory_and_harness.md) |
 | Full parameter specification and harness extension management items | [05_config_and_schemas/01_pipeline_config.md](05_config_and_schemas/01_pipeline_config.md) |
 | Data schemas and trace / eval schema | [05_config_and_schemas/02_data_schemas.md](05_config_and_schemas/02_data_schemas.md) |
 | Offline execution flow and verification points | [06_pipeline_runtime/01_offline_pipeline.md](06_pipeline_runtime/01_offline_pipeline.md) |
 | Online query handling and self-repair / HITL | [06_pipeline_runtime/02_online_query_pipeline.md](06_pipeline_runtime/02_online_query_pipeline.md) |
-| Query Planner details | [04_agent_system/02_query_planner.md](04_agent_system/02_query_planner.md) |
-| Graph Retriever details | [04_agent_system/03_graph_retriever.md](04_agent_system/03_graph_retriever.md) |
-| Evidence Retriever details | [04_agent_system/04_evidence_retriever.md](04_agent_system/04_evidence_retriever.md) |
-| Causal Reasoner details | [04_agent_system/05_causal_reasoner.md](04_agent_system/05_causal_reasoner.md) |
-| Risk Controller / Answer Composer details | [04_agent_system/06_risk_controller_and_answer_composer.md](04_agent_system/06_risk_controller_and_answer_composer.md) |

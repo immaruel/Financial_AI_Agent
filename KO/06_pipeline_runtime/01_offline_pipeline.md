@@ -76,7 +76,7 @@ FinancialKGPipeline.__init__()
 `FinancialKGPipeline.__init__()`에서 수행되는 작업:
 
 ```python
-asyncio.get_event_loop().run_until_complete(
+_run_coro_sync(
     self.ref_data.load_from_dart(self.config.collection.dart_api_key)
 )
 
@@ -251,7 +251,7 @@ self.llm_client.load_model()
 
 ---
 
-## 8. Drift / Cleanup / Entropy Management
+## 8. Drift / Cleanup / Trajectory Management
 
 오프라인 시스템은 시간이 지날수록 엔트로피가 쌓인다. 이를 방치하면 retrieval과 reasoning 품질이 서서히 무너진다.
 

@@ -76,7 +76,7 @@ FinancialKGPipeline.__init__()
 Work performed in `FinancialKGPipeline.__init__()`:
 
 ```python
-asyncio.get_event_loop().run_until_complete(
+_run_coro_sync(
     self.ref_data.load_from_dart(self.config.collection.dart_api_key)
 )
 
@@ -251,9 +251,9 @@ The later improvement loop should follow this order:
 
 ---
 
-## 8. Drift / Cleanup / Entropy Management
+## 8. Drift / Cleanup / Trajectory Management
 
-Entropy accumulates over time in offline systems. If left unmanaged, retrieval and reasoning quality gradually degrades.
+Trajectory accumulates over time in offline systems. If left unmanaged, retrieval and reasoning quality gradually degrades.
 
 Recommended operational strategies:
 

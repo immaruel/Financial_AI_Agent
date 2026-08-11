@@ -71,7 +71,7 @@ Collect the full filing list
 asyncio.gather + Semaphore(max_concurrent=10)
   └─ Run _fetch_single_filing() in parallel for each filing
       │
-      ├─ If report type is in FULL_TEXT_REPORT_TYPES, also fetch body via document.json
+      ├─ If report type is in FULL_TEXT_REPORT_TYPES, also fetch the document.xml archive
       └─ Otherwise keep only title/metadata
 ```
 
@@ -81,6 +81,8 @@ asyncio.gather + Semaphore(max_concurrent=10)
 material reports, earnings disclosures, supply contracts, rights offerings, treasury stock,
 dividends, mergers, spin-offs, business transfers, stock swaps, large related-party transactions, executive changes
 ```
+
+The `document.xml` response must be treated as a ZIP archive. Store and validate bytes first, then parse its internal XML/XHTML with a DOM parser. Regex stripping loses table structure and source locations; the block/artifact preservation model built on top of this parsing is documented in [Retrieval Workers and EvidenceBlock](../04_agent_system/03_retrieval_workers.md#2-the-common-evidence-unit-evidenceblock).
 
 **Correction filing handling:**
 

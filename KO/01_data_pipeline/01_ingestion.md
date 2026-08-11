@@ -4,6 +4,8 @@
 
 외부 소스(DART 공시 API, 네이버 뉴스 API)로부터 금융 문서를 수집하여 `RawDocument` 형태로 저장한다.
 
+> **원문 보존 범위**: source별 connector는 본문을 단순 text로 평탄화하지 않고, 원본 artifact(ZIP/XML/HTML/PDF)와 paragraph/table/figure/caption block, 그리고 페이지·DOM 위치를 함께 보존한다. block과 EvidenceBlock의 관계는 [Retrieval Worker와 EvidenceBlock](../04_agent_system/03_retrieval_workers.md#2-공통-근거-단위-evidenceblock)을 따른다. 이는 KPI 추출·백필 플랫폼을 구현하는 범위가 아니라, 금융 답변의 원문 citation을 보존하는 범위다.
+
 단순 다운로드가 아니라 **출처·시간·정정 이력·중복 여부를 정확히 추적하는 것**이 이 모듈의 핵심 목적이다. 후속 전처리 파이프라인이 신뢰할 수 있는 원문 메타데이터를 보장하는 첫 번째 게이트다.
 
 ---
@@ -38,6 +40,8 @@
 | `is_correction` | bool (공시) | 정정 공시 여부 |
 | `parent_rcept_no` | str (공시) | 정정 대상 원본 접수번호 |
 
+목표 출력은 `RawDocument.raw_text`만으로 충분하지 않다. `RawArtifact`(원본 ZIP/XML/HTML/PDF, hash, mime type, fetch time)와 `DocumentBlock`(paragraph/table/table_cell/figure/caption, order, locator)을 별도로 저장하고, 정규화 text는 파생 산출물로 유지한다.
+
 ---
 
 ## 3. 처리 로직
@@ -71,7 +75,7 @@ list.json 페이지네이션 (bgn_de ~ end_de, PAGE_SIZE=100)
 asyncio.gather + Semaphore(max_concurrent=10)
   └─ 각 공시별 _fetch_single_filing() 병렬 실행
       │
-      ├─ FULL_TEXT_REPORT_TYPES 해당 시 → 본문(document.json) 추가 수집
+      ├─ FULL_TEXT_REPORT_TYPES 해당 시 → 원문 파일(document.xml) archive 추가 수집
       └─ 나머지 → 제목/메타만 유지
 ```
 
@@ -80,6 +84,8 @@ asyncio.gather + Semaphore(max_concurrent=10)
 주요사항보고서, 실적공시, 공급계약체결, 유상증자, 자기주식,
 배당, 합병, 분할, 영업양수도, 주식교환, 대규모내부거래, 임원변동
 ```
+
+`document.xml`은 XML을 문자열로 가정해 처리하지 않는다. OpenDART 원문 파일 API의 응답은 ZIP archive이므로 bytes로 저장·검증한 뒤 내부 XML/XHTML을 DOM parser로 block화한다. 표의 header, 행/열, 병합 셀, 단위·통화·기간 문맥과 section/XPath/table locator를 보존한다.
 
 **정정 공시 처리:**
 - 제목에 정정 키워드(`정정`, `[정정]`, `기재정정` 등) 포함 시 `is_correction=True`
@@ -108,7 +114,7 @@ news_search_keywords (기본: 현대자동차, 삼성전자 등 10개)
 asyncio.gather + Semaphore 병렬 처리
       │
       ▼
-HTML 본문 추출 (source_url 기반)
+발행사 원문 HTML/PDF의 DOM 기반 block 추출 (source_url 기반, 접근 허용 시)
       │
       ▼
 RawDocument 생성
@@ -132,7 +138,7 @@ RawDocument 생성
 - `CollectionConfig` (config/settings.py): 모든 수집 파라미터
 
 ### Downstream
-- `RawDocumentNormalizer` (collection/raw_normalizer.py): 수집된 RawDocument를 공통 포맷으로 정규화
+- `RawDocumentNormalizer` (collection/raw_normalizer.py): 수집된 RawDocument와 block text를 공통 포맷으로 정규화
 - `DocumentFingerprinter` (collection/document_fingerprint.py): 중복/버전 판별
 
 ### 외부 의존성
@@ -200,6 +206,8 @@ async with aiohttp.ClientSession() as session:
 
 `main.py`의 `_online_supplement()` 메서드에서 이 모듈을 직접 재호출한다. 이 때 `news_search_keywords`를 질의 키워드로 임시 교체하고, 수집 건수를 20건으로 제한하여 빠른 보완이 가능하도록 한다.
 
+목표 구조에서 online supplement는 단순 text 수집으로 원문 artifact를 덮어쓰지 않는다. 모든 수집 결과는 content hash, source URL, fetch time과 함께 별도 artifact로 저장하며, connector 실패는 `parse_failed` 또는 `access_denied` 상태로 Supervisor에 전달한다.
+
 ---
 
 ## 7. 설계 의사결정 근거
@@ -207,8 +215,11 @@ async with aiohttp.ClientSession() as session:
 **왜 DART 공시를 페이지네이션으로 전체 수집하는가?**
 최신 100건 목록만 가져오는 방식은 고빈도 공시 기간에 누락이 발생할 수 있다. `bgn_de`~`end_de` 범위를 PAGE_SIZE=100으로 페이지네이션하면 기간 내 전체 공시를 빠짐없이 수집한다.
 
-**왜 뉴스 본문을 HTML URL로 별도 수집하는가?**
-네이버 뉴스 API 응답에는 제목과 요약만 포함된다. 이벤트 추출과 근거 회수(PassageIndex)에는 전체 본문이 필요하므로 `source_url`로 HTML을 추가 수집한다.
+**왜 네이버 검색 connector와 발행사 connector를 분리하는가?**
+네이버 뉴스 API 응답에는 제목과 요약, 기사 링크가 포함된다. 이는 후보 발견에 적합하지만 본문·표·이미지의 표준 형식이 아니다. 실제 원문은 접근이 허용된 발행사 URL에서 DOM 기반으로 파싱하며, 발행사별 정책·selector·저작권 조건을 별도로 관리해야 한다.
+
+**왜 HTML 태그를 정규식으로 제거하지 않는가?**
+정규식 평탄화는 문단 순서, 표 셀, figure caption, URL locator를 잃는다. 이후 정확한 수치 검증과 클릭 가능한 citation을 만들 수 없으므로 DOM/XML/PDF parser로 구조를 보존한다.
 
 **왜 정정 공시를 별도 문서로 저장하는가?**
 정정 전·후 내용을 모두 보존해야 사실 변경 이력 추적이 가능하다. `parent_rcept_no`로 연결하되 별도 `raw_doc_id`를 부여하여 버전 관계를 명시한다.

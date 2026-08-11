@@ -49,6 +49,13 @@ EvalSample
             └→ ReasoningTrace
                  └→ AnswerTrace
                       └→ FailureCase / RunRecord
+
+[TARGET ONLINE ORCHESTRATION]
+QuerySpecDraft → QuerySpec + RetrievalPolicy + MemorySelection
+  └→ WorkerResult / ToolCallTrace
+       └→ EvidenceBlock
+            └→ Claim
+                 └→ VerifierVerdict / RecoveryDecision
 ```
 
 ---
@@ -211,6 +218,115 @@ class StructuredAnswer(BaseModel):
     sources: List[Dict[str, str]]
     risk_warnings: List[str]
 ```
+
+### 온라인 오케스트레이션 스키마
+
+아래 모델은 `utils/schemas.py`에 구현되어 [에이전트 전체 구조](../04_agent_system/01_agent_architecture.md)의 역할 간 계약으로 쓰인다. 자유 텍스트 상태를 다음 agent에 넘기지 않고, schema 검증 가능한 상태와 실패 원인을 전달하는 데 목적이 있다.
+
+```python
+class NeedLevel(str, Enum):
+    REQUIRED = "required"
+    PREFERRED = "preferred"
+    NOT_NEEDED = "not_needed"
+
+class EvidenceNeeds(BaseModel):
+    graph_relation: NeedLevel
+    primary_source_quote: NeedLevel
+    numeric_value: NeedLevel
+    table_or_figure: NeedLevel
+
+class QuerySpecDraft(BaseModel):
+    query_id: str
+    original_query: str
+    request_timestamp: datetime
+    as_of: datetime
+    intent: str
+    sub_intents: List[str] = []
+    entities: List[Dict[str, str]]
+    time: Dict[str, Any]
+    answer_format: str
+    evidence_needs: EvidenceNeeds
+    memory_mode: Literal["off", "if_relevant"] = "if_relevant"
+    confidence: float
+
+class QuerySpec(QuerySpecDraft):
+    # Entity/Time Validator가 채우는 최종 실행 스펙
+    resolved_entities: List[Dict[str, str]]
+    resolved_time: Dict[str, Any]
+
+class RetrievalPolicy(BaseModel):
+    policy_id: str
+    channels: List[str]               # graph / lexical / vector / document_block
+    graph_mode: str                   # off / assist / primary
+    source_filters: List[str]
+    date_filter: Dict[str, Any]
+    fusion: Optional[str]             # rrf / none
+    embedding_model: Optional[str]    # BAAI/bge-m3
+    reranker: Optional[str]
+    evidence_budget: int
+    retry_budget: int
+
+class WorkerFailure(BaseModel):
+    code: str                         # timeout, entity_ambiguous, retrieval_empty ...
+    retryable: bool
+    detail: Optional[str] = None
+
+class WorkerResult(BaseModel):
+    worker: str
+    status: Literal["success", "partial", "failed", "skipped"]
+    attempt: int
+    input_hash: str
+    output_ids: List[str] = []
+    latency_ms: int
+    failure: Optional[WorkerFailure] = None
+
+class EvidenceBlock(BaseModel):
+    evidence_id: str
+    document_id: str
+    source_type: str
+    source_url: str
+    published_at: Optional[datetime]
+    effective_period: Optional[str]
+    block_type: str                   # paragraph / table / table_cell / figure / caption
+    text: str
+    locator: Dict[str, Any]
+    content_hash: str
+
+class Claim(BaseModel):
+    claim_id: str
+    text: str
+    claim_type: str                   # numeric / factual / causal / quote
+    importance: Literal["critical", "normal"]
+    evidence_ids: List[str]
+
+class VerifierVerdict(BaseModel):
+    claim_id: str
+    coverage: Literal["pass", "fail"]
+    entailment: Literal["support", "contradict", "neutral", "unknown"]
+    numeric_temporal: Literal["pass", "fail", "not_applicable"]
+    attribution: Literal["pass", "fail"]
+    reasons: List[str]
+
+class MemorySelection(BaseModel):
+    status: Literal["selected", "not_relevant", "blocked"]
+    memory_ids: List[str] = []
+    reasons: List[str] = []
+    excluded: List[Dict[str, str]] = []
+    token_budget: int = 0
+
+class ToolCallTrace(BaseModel):
+    run_id: str
+    worker: str
+    tool_name: str
+    selected_by: str                  # policy / recovery / deterministic fallback
+    arguments_hash: str
+    corpus_snapshot: Optional[str]
+    status: str
+    latency_ms: int
+    output_ids: List[str]
+```
+
+`NeedLevel`은 필수 검색과 품질 보조 검색을 구분한다. LLM은 QuerySpecDraft를 제안하지만 Validator가 명시적 숫자·표·관계·발언 신호를 보정하고, RetrievalPolicy는 코드가 생성한다. `WorkerResult.status`와 `failure`는 비어 있는 검색 결과를 성공처럼 처리하지 않도록 한다. `ToolCallTrace`에는 원문이나 사용자 메모리 전체를 중복 저장하지 않고, 보안 범위를 지키는 식별자·hash·version을 기록한다.
 
 ---
 

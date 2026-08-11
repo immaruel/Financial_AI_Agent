@@ -12,7 +12,7 @@ This document follows the structure below.
 - Configuration / schemas / runtime
 - Operational rules from a harness engineering perspective
 
-In other words, the documents cover both "what was implemented" and "how it will be operated and validated."
+In other words, the documents cover both "what was implemented" and "how it is operated and validated."
 
 ---
 
@@ -40,17 +40,17 @@ docs/
 │   ├── 02_graph_schema.md                      ← Node/edge schema, load/skip conditions
 │   └── 03_graph_loader.md                      ← GraphPayloadBuilder, PassageIndex construction
 │
-├── 04_agent_system/                            ← Agentic GraphRAG
-│   ├── 01_agent_architecture.md                ← 7-agent components, execution loop, trace, recovery
-│   ├── 02_query_planner.md                     ← Query normalization, intent classification, entity extraction
-│   ├── 03_graph_retriever.md                   ← Seed discovery, hop/edge strategy, truncation
-│   ├── 04_evidence_retriever.md                ← PassageIndex-based source recovery, conflict detection
-│   ├── 05_causal_reasoner.md                   ← Temporal/causal reconstruction, CausalChain
-│   └── 06_risk_controller_and_answer_composer.md ← checker/composer/risk control
+├── 04_agent_system/                            ← Agentic GraphRAG (verifiable multi-agent orchestration)
+│   ├── 01_agent_architecture.md                ← Full component set, execution loop, contracts, trace/ledger
+│   ├── 02_query_understanding_and_routing.md   ← QuerySpec, NeedLevel, Retrieval Policy Builder
+│   ├── 03_retrieval_workers.md                 ← Graph/Hybrid/Document-block workers, EvidenceBlock
+│   ├── 04_evidence_and_claims.md               ← Evidence Requirement Gate, Context Builder, Claim-first Generator
+│   ├── 05_verification_and_answer_gate.md      ← Deterministic claim verifier, Answer Gate
+│   └── 06_recovery_memory_and_harness.md       ← Critic/Supervisor recovery, user memory, risk management
 │
 ├── 05_config_and_schemas/
-│   ├── 01_pipeline_config.md                   ← Current Config + harness extension management items
-│   └── 02_data_schemas.md                      ← Core schemas + trace/eval/run schema
+│   ├── 01_pipeline_config.md                   ← Full Config and harness extension management items
+│   └── 02_data_schemas.md                      ← Core schemas + trace/eval/run/ledger schema
 │
 └── 06_pipeline_runtime/
     ├── 01_offline_pipeline.md                  ← offline flow, verification, regression gate
@@ -74,8 +74,13 @@ docs/
 | Event type hierarchy | [03_knowledge_graph/01_ontology.md](03_knowledge_graph/01_ontology.md) |
 | Node/edge schema + loading rules | [03_knowledge_graph/02_graph_schema.md](03_knowledge_graph/02_graph_schema.md) |
 | PassageIndex structure | [03_knowledge_graph/03_graph_loader.md](03_knowledge_graph/03_graph_loader.md) |
-| Agent execution loop and recovery | [04_agent_system/01_agent_architecture.md](04_agent_system/01_agent_architecture.md) |
-| KG miss handling and self-repair | [06_pipeline_runtime/02_online_query_pipeline.md](06_pipeline_runtime/02_online_query_pipeline.md) |
+| Full agent architecture, execution loop, ledger | [04_agent_system/01_agent_architecture.md](04_agent_system/01_agent_architecture.md) |
+| QuerySpec generation prompt and Retrieval Policy | [04_agent_system/02_query_understanding_and_routing.md](04_agent_system/02_query_understanding_and_routing.md) |
+| Graph/Hybrid/Document-block retrieval, EvidenceBlock structure | [04_agent_system/03_retrieval_workers.md](04_agent_system/03_retrieval_workers.md) |
+| Evidence Requirement Gate, claim-first generation | [04_agent_system/04_evidence_and_claims.md](04_agent_system/04_evidence_and_claims.md) |
+| Deterministic numeric/temporal/attribution verification, Answer Gate | [04_agent_system/05_verification_and_answer_gate.md](04_agent_system/05_verification_and_answer_gate.md) |
+| Critic/Supervisor recovery, user memory, risk management | [04_agent_system/06_recovery_memory_and_harness.md](04_agent_system/06_recovery_memory_and_harness.md) |
+| KG-miss handling, self-repair, real-time supplemental collection | [06_pipeline_runtime/02_online_query_pipeline.md](06_pipeline_runtime/02_online_query_pipeline.md) |
 | Offline verification points and regression gate | [06_pipeline_runtime/01_offline_pipeline.md](06_pipeline_runtime/01_offline_pipeline.md) |
 | Configuration and version management from a CI/CD gate perspective | [05_config_and_schemas/01_pipeline_config.md](05_config_and_schemas/01_pipeline_config.md) |
-| trace / eval / run metadata schema | [05_config_and_schemas/02_data_schemas.md](05_config_and_schemas/02_data_schemas.md) |
+| trace / eval / run / ledger metadata schema | [05_config_and_schemas/02_data_schemas.md](05_config_and_schemas/02_data_schemas.md) |

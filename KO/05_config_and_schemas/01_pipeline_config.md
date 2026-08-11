@@ -145,6 +145,50 @@ class PipelineConfig:
 | `temporal_window_days` | 90 | 기본 시간 윈도우 |
 | `prohibited_phrases` | 7개 | Risk Controller 금지 문구 |
 
+### 목표 Query/Retrieval/Verification 설정
+
+다음 설정은 현재 코드에 아직 없으며 목표 온라인 구조를 구현할 때 추가한다. 모델명·index version·routing policy·retry budget을 한 snapshot으로 묶어야 동일 질문을 재현할 수 있다.
+
+```python
+@dataclass
+class QueryUnderstandingConfig:
+    prompt_version: str = "query-spec-v1"
+    schema_version: str = "query-spec-v1"
+    max_repair_attempts: int = 1
+    low_confidence_threshold: float = 0.70
+    default_time_kind: str = "unspecified"
+
+@dataclass
+class HybridRetrievalConfig:
+    lexical_engine: str = "opensearch_bm25"
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_dimension: int = 1024
+    fusion_method: str = "rrf"
+    rrf_k: int = 60
+    lexical_top_k: int = 30
+    vector_top_k: int = 30
+    reranker_model: str = "BAAI/bge-reranker-v2-m3"
+    rerank_top_k: int = 18
+
+@dataclass
+class RoutingConfig:
+    policy_version: str = "retrieval-policy-v1"
+    default_channels: tuple[str, ...] = ("lexical", "vector")
+    allow_graph_modes: tuple[str, ...] = ("off", "assist", "primary")
+    fast_path_use_preferred: bool = False
+    high_assurance_use_preferred: bool = True
+
+@dataclass
+class VerificationConfig:
+    critical_claim_requires_evidence: bool = True
+    critical_numeric_fail_blocks_answer: bool = True
+    attribution_fail_blocks_answer: bool = True
+    citation_coverage_target: float = 0.95
+    max_recovery_attempts: int = 2
+```
+
+`rrf_k`, 각 채널의 `top_k`, rerank 수량은 초기값일 뿐이다. 금융 질의 gold set에서 Recall@k, nDCG, citation coverage, p95 latency를 함께 측정해 확정한다. 모델이나 chunking이 바뀌면 기존 vector index를 재사용하지 않고 새 `index_snapshot`을 발급한다.
+
 ---
 
 ## 4. 하네스 엔지니어링 확장 관리 항목

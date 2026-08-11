@@ -2,137 +2,146 @@
 
 ## 1. 목적
 
-사용자의 자연어 질의를 받아 KG를 탐색하고, 근거 기반의 구조화된 답변을 생성하는 **다중 에이전트 파이프라인**을 정의한다.
+사용자의 자연어 질의를 받아 질문이 요구하는 근거 유형에 따라 검색 채널을 선택·병렬 실행하고, claim 단위로 검증한 뒤 실패를 진단·복구하는 검증 가능한 멀티 에이전트 오케스트레이션을 정의한다.
 
 이 문서는 단순히 "어떤 에이전트가 있는가"를 설명하는 데서 끝나지 않는다. 하네스 엔지니어링 관점에서 다음을 함께 정의한다.
 
-- 각 에이전트의 입력과 출력
+- 각 에이전트/worker의 입력과 출력 계약
 - 성공 조건과 실패 조건
 - 실행 루프에서의 검증 포인트
-- trace 수집 규격
+- trace/ledger 수집 규격
 - self-repair와 human escalation 기준
 
 ---
 
-## 2. 에이전트 목록 및 역할
+## 2. "에이전트"의 정의와 설계 원칙
 
-현재 시스템의 논리적 실행 단위는 아래 7개 컴포넌트로 본다.
+`AgentOrchestrator`(`agent/orchestrator.py`)는 여러 클래스를 항상 같은 순서로 호출하는 고정 파이프라인이 아니다. 아래 5가지 조건을 모두 만족해야 멀티 에이전트 오케스트레이션이라고 부른다.
 
-| 컴포넌트 | 클래스 | 역할 |
-|----------|--------|------|
-| Query Planner | `QueryPlannerAgent` | 자연어 질의 → 구조화된 `QueryPlan` |
-| Graph Retriever | `GraphRetrieverAgent` | `QueryPlan` → `SubGraphResult` |
-| Evidence Retriever | `EvidenceRetrieverAgent` | `SubGraphResult` → `EvidenceResult` |
-| Causal Reasoner | `CausalReasonerAgent` | Subgraph + Evidence → `CausalChain` |
-| Hypothesis Checker | `HypothesisCheckerAgent` | 추론 결과의 unsupported claim / contradiction 점검 |
-| Answer Composer | `AnswerComposerAgent` | 모든 결과 통합 → `StructuredAnswer` 초안 |
-| Risk Controller | `RiskControllerAgent` | 투자 표현·과도한 확신·고위험 출력을 후처리 필터링 |
+1. **Planner 결과에 따라 worker 집합이 달라진다** — `RetrievalPolicy.channels`에 없는 worker는 아예 실행하지 않는다.
+2. **독립 worker와 verifier는 병렬 실행한다** — memory/graph/hybrid/document-block worker는 `ThreadPoolExecutor`로 동시 실행되고, claim verifier의 4개 검증 축(entailment/numeric/temporal/attribution)도 pair 단위로 함께 계산된다.
+3. **worker별 tool 권한과 결과 스키마가 다르다** — graph worker는 그래프 traversal과 confidence 임계값만, hybrid worker는 BM25/dense 검색만 수행하며 서로의 자원에 접근하지 않는다.
+4. **Supervisor가 실패 상태를 바탕으로 재시도·대체 경로·중단을 선택한다** — `CriticAgent.diagnose()` → `Supervisor.authorize()`가 이 결정을 담당한다.
+5. **모든 의사결정과 tool call을 trace로 재현할 수 있다** — `CitationLedger`가 session 단위로 불변 기록을 남긴다.
 
-> `HypothesisCheckerAgent`는 reasoning 결과를 검증하는 논리 검증기이고, `RiskControllerAgent`는 최종 사용자 안전성을 제어하는 정책 필터다. 둘은 목적이 다르므로 하네스 설계에서도 별도 관리한다.
+"agent"는 단지 LLM 호출을 뜻하지 않는다. 독립 입력/출력 계약, 제한된 tool 권한, 성공·실패 상태, 동적 라우팅 중 적어도 하나 이상의 실행 책임을 가진 역할이다. 반대로 BM25/RRF/그래프 탐색처럼 재현 가능한 search는 결정적 worker로 유지한다.
 
 ---
 
-## 3. Depth-first Task Decomposition
+## 3. 논리 컴포넌트
 
-최상위 목표는 "금융 질의에 대해 근거 기반 답변을 안정적으로 반환"하는 것이다. 이를 depth-first 방식으로 실행 가능한 최소 단위까지 쪼개면 아래와 같다.
+| 컴포넌트 | 클래스/모듈 | 역할 | LLM 사용 |
+|----------|--------|------|---|
+| Query Understanding Agent | `QueryUnderstandingAgent` (`agent/query_understanding.py`) | 자연어 질의 → `QuerySpecDraft` → 결정적 검증을 거친 `QuerySpec` | 사용 |
+| Retrieval Policy Builder | `RetrievalPolicyBuilder` (`agent/routing.py`) | `QuerySpec` → `RetrievalPolicy` (channel/budget/retry) | 사용 안 함 |
+| Graph Retrieval Worker | `GraphRetrievalWorker` (`retrieval/graph.py`) | seed 탐색 → subgraph → path → EvidenceBlock 확장 | 사용 안 함 |
+| Hybrid / Document-block Retrieval Worker | `HybridRetrievalWorker` (`retrieval/hybrid.py`) | BM25 + BGE-M3 lexical/vector 검색, `document_blocks_only=True`이면 표/그림 전용 | 사용 안 함 |
+| Evidence Fusion & Rerank | `fuse_ranked_evidence` + `Reranker` (`retrieval/hybrid.py`) | 채널별 rank를 RRF로 융합하고 cross-encoder로 재정렬 | 사용 안 함(cross-encoder는 검색 전용 모델) |
+| User Memory Store | `UserMemoryStore` (`agent/memory.py`) | tenant/user 범위의 개인화 메모리를 결정적 규칙으로 선택 | 사용 안 함 |
+| Context Builder | `ContextBuilder` (`agent/context_builder.py`) | QuerySpec/evidence/graph path/memory를 evidence-ID allowlist 컨텍스트로 조립 | 사용 안 함 |
+| Evidence Requirement Gate | `EvidenceRequirementGate` (`agent/requirements.py`) | 생성 이전에 `required` 근거 modality 충족 여부를 사전 차단 | 사용 안 함 |
+| Claim-first Generator | `ClaimFirstGenerator` (`agent/generation.py`) | context → evidence ID로 제약된 atomic claim | 사용 |
+| Deterministic Claim Verifier | `DeterministicClaimVerifier` (`agent/verification.py`) | claim-evidence pair별 entailment/numeric/temporal/attribution/relation/locator 검증 | 사용 안 함 |
+| Answer Gate | `AnswerGate` (`agent/verification.py`) | claim verdict → pass/repair/abstain | 사용 안 함 |
+| Critic | `CriticAgent` (`agent/supervisor.py`) | gate reason code + worker failure → `RecoveryDecision` | 사용 안 함 |
+| Supervisor | `Supervisor` (`agent/supervisor.py`) | 허용된 recovery action만 승인, 동일 실패 재시도 횟수 제한 | 사용 안 함 |
 
-```text
-Goal: 금융 질의에 대한 구조화된 답변 생성
-  ├─ T1. 질의 이해
-  │    └─ Query 정규화, intent 분류, entity/time 추출
-  ├─ T2. 그래프 탐색
-  │    └─ seed 탐색, subgraph retrieval, temporal pruning
-  ├─ T3. 근거 회수
-  │    └─ passage / document evidence 선택, contradiction 포함 여부 점검
-  ├─ T4. 추론
-  │    └─ timeline 정렬, 인과 연결, unsupported inference 점검
-  ├─ T5. 답변 구성
-  │    └─ 근거 기반 요약, citation 정렬, confidence 계산
-  └─ T6. 위험 제어
-       └─ 투자 권유, speculative 표현, low-confidence 출력 제어
-```
-
-각 Task의 명세는 다음과 같다.
-
-| Task | 입력 | 출력 | 성공 조건 | 실패 조건 |
-|------|------|------|-----------|-----------|
-| T1. 질의 이해 | `query` | `QueryPlan` | intent, entity, temporal scope가 질의와 정합 | intent 오분류, entity 누락, 시간 범위 추출 실패 |
-| T2. 그래프 탐색 | `QueryPlan`, KG | `SubGraphResult` | 필요한 seed와 관련 서브그래프를 충분히 회수 | 관련성 낮은 노드 과다, gold seed 누락 |
-| T3. 근거 회수 | `SubGraphResult`, PassageIndex | `List[EvidenceResult]` | 핵심 주장에 대응하는 evidence 확보 | citation 부족, contradiction evidence 누락 |
-| T4. 추론 | subgraph + evidence | `CausalChain`, verification input | 시간순/인과 연결이 과장 없이 구성 | 시간 순서 역전, 상관관계의 인과 단정 |
-| T5. 답변 구성 | plan + evidence + chain + checker verdict | `StructuredAnswer` 초안 | 사실/해석 구분, citation alignment 유지 | unsupported claim 삽입, 수치/시점 왜곡 |
-| T6. 위험 제어 | `StructuredAnswer` 초안 | 필터링된 최종 답변 | 투자 권유/과도한 확신 억제, 저신뢰 경고 부착 | 유용성 훼손, 안전성 미달 |
+`AgentOrchestrator`는 이 컴포넌트들을 조립하고, 위 표에 없는 로직(answer 렌더링, ledger 기록, trace 계산)을 직접 수행한다.
 
 ---
 
 ## 4. 전체 실행 흐름
 
 ```text
-사용자 질의 (str)
+사용자 질의 + tenant_id + user_id + request_timestamp
         │
         ▼
-[1] QueryPlannerAgent.plan()
-        │  QueryPlan
+[1] QueryUnderstandingAgent.understand()
+        │  QuerySpec (validation_status: valid / entity_ambiguous / planner_fallback)
         ▼
-[2] GraphRetrieverAgent.retrieve()
-        │  SubGraphResult
+[2] RetrievalPolicyBuilder.build()
+        │  RetrievalPolicy (channels, source_filters, date_filter, evidence_budget, retry_budget)
         ▼
-[3] EvidenceRetrieverAgent.retrieve_evidence()
-        │  List[EvidenceResult]
+[3] 병렬 실행 (ThreadPoolExecutor)
+        │  ├─ UserMemoryStore.select()            (memory_mode != off)
+        │  ├─ GraphRetrievalWorker.run()           ("graph" in channels)
+        │  ├─ HybridRetrievalWorker.run()          ("lexical"/"vector" in channels)
+        │  └─ HybridRetrievalWorker.run(document_blocks_only=True)  ("document_block" in channels)
         ▼
-[4] CausalReasonerAgent.reason()
-        │  CausalChain
+[4] fuse_ranked_evidence() (RRF) → Reranker.rerank() → prioritize_relative_order()
+        │  List[EvidenceBlock]
         ▼
-[5] HypothesisCheckerAgent.check()
-        │  verification verdict
+[5] EvidenceRequirementGate.evaluate()
+        │  pass 아니면 바로 [8]로 (생성 없이 재시도/중단)
         ▼
-[6] AnswerComposerAgent.compose()
-        │  StructuredAnswer draft
+[6] ContextBuilder.build() → ClaimFirstGenerator.generate()
+        │  List[AtomicClaim]
         ▼
-[7] RiskControllerAgent.check_and_filter()
-        │  StructuredAnswer
+[7] VerificationPipeline.verify_and_gate()
+        │  = DeterministicClaimVerifier.verify() + AnswerGate.evaluate()
+        │  AnswerGateDecision (pass / repair / abstain / clarification)
         ▼
-최종 답변 반환
+[8] gate.decision == pass?
+        ├─ 예 → _render_answer() → StructuredAnswer
+        └─ 아니오 → CriticAgent.diagnose() → Supervisor.authorize()
+                      │  RecoveryDecision.next_actions
+                      ▼
+                _run_recovery_worker() (graph 재시도 / document-block 재시도 /
+                      hybrid 재시도+term 확장 / claim 제거) → [4]로 복귀
+                동일 (worker, input_hash, failure_code) 재시도 한도 초과 시 abstain
+        ▼
+CitationLedger 기록 → StructuredAnswer 반환
 ```
 
-`agent/agents.py`의 `AgentOrchestrator`는 위 흐름을 순차 실행한다.
+`agent/orchestrator.py`의 `process_request()`가 이 전체 루프를 실행한다.
 
 ```python
 class AgentOrchestrator:
-    def __init__(self, config, graph_store, llm_client, entity_dict):
-        self.query_planner = QueryPlannerAgent(config, entity_dict)
-        self.graph_retriever = GraphRetrieverAgent(config, graph_store)
-        self.evidence_retriever = EvidenceRetrieverAgent(graph_store)
-        self.causal_reasoner = CausalReasonerAgent(graph_store)
-        self.hypothesis_checker = HypothesisCheckerAgent(llm_client)
-        self.answer_composer = AnswerComposerAgent(llm_client)
-        self.risk_controller = RiskControllerAgent(config)
+    def __init__(self, config, graph_store, llm_client=None, entity_dict=None, memory_store=None):
+        self.query_understanding = QueryUnderstandingAgent(llm_client, entity_dict or {})
+        self.policy_builder = RetrievalPolicyBuilder(config.retrieval, config.supervisor)
+        self.memory_store = memory_store or UserMemoryStore(config.memory, ...)
+        self.context_builder = ContextBuilder(config.context)
+        self.claim_generator = ClaimFirstGenerator(llm_client, config.audit)
+        self.requirement_gate = EvidenceRequirementGate()
+        self.verification = VerificationPipeline(config.verification)
+        self.critic = CriticAgent()
+        self.supervisor = Supervisor(config.supervisor)
 
-    def process_query(self, query: str) -> StructuredAnswer:
-        plan = self.query_planner.plan(query)
-        subgraph = self.graph_retriever.retrieve(plan)
-        evidence = self.evidence_retriever.retrieve_evidence(subgraph)
-        chain = self.causal_reasoner.reason(subgraph)
-        verification = self.hypothesis_checker.check(chain, evidence)
-        answer = self.answer_composer.compose(plan, subgraph, evidence, chain, verification)
-        answer = self.risk_controller.check_and_filter(answer)
-        return answer
+    def process_request(self, request: QueryRequest) -> AgentRunResult:
+        spec = self.query_understanding.understand(request)
+        policy = self.policy_builder.build(spec, request.assurance_mode)
+        memory_selection, worker_outputs, tool_calls = self._run_initial_workers(spec, policy, ...)
+        evidence, _ = self._fuse_and_rerank(spec.original_query, [...], policy, catalog)
+        while True:
+            gate = self.requirement_gate.evaluate(spec, evidence, graph_output.paths, worker_results)
+            if gate.decision == "pass":
+                context = self.context_builder.build(spec, policy, evidence, ...)
+                claims, _ = self.claim_generator.generate(spec, context, evidence)
+                verdicts, gate = self.verification.verify_and_gate(claims, evidence, as_of=spec.as_of, query_spec=spec)
+                if gate.decision == "pass":
+                    break
+            decision = self.supervisor.authorize(self.critic.diagnose(gate, worker_results, retries_remaining))
+            if decision.decision in {"abstain", "clarification"}:
+                break
+            # run_graph_retrieval / run_document_block_retrieval / run_hybrid_text_retrieval / remove_claim
+            output, trace = self._run_recovery_worker(decision.next_actions[0], spec, policy, catalog, graph_worker)
+            ...
+        return AgentRunResult(answer=self._render_answer(...), ledger=ledger, ...)
 ```
 
 ---
 
-## 5. Execution Loop
+## 5. Perceive → Plan → Act → Observe → Reflect → Iterate 매핑
 
-온라인 에이전트의 실행은 아래 루프로 해석한다.
-
-| 단계 | 의미 | 입력 | 출력 | 실패 처리 |
+| 단계 | 실제 구현 | 입력 | 출력 | 실패 처리 |
 |------|------|------|------|-----------|
-| Perceive | 질의와 현재 KG 상태 파악 | raw query, policy, KG 상태 | normalized query, risk context | query parse 실패 시 safe fallback |
-| Plan | 질의 구조화 | normalized query, context bundle | `QueryPlan` | low-confidence plan이면 보수적 temporal/entity 해석 |
-| Act | retrieval / reasoning / composition 실행 | `QueryPlan`, graph store | subgraph, evidence, chain, draft answer | KG miss 시 supplement, retrieval expansion |
-| Observe | 중간 산출물 검증 | intermediate outputs | validation result | unsupported claim, temporal mismatch 탐지 |
-| Reflect | 실패 원인 분석 | validation result, trace | repair decision | 어디서 틀렸는지 failure taxonomy로 태깅 |
-| Iterate | 재시도 또는 종료 | repair decision | corrected answer or escalation | 반복 한도 초과 시 human review |
+| Perceive | `QueryRequest` 생성, entity_ambiguous/graph 미해소 preflight 검사 | raw query, tenant/user, request_timestamp | `QueryRequest` | 미해소 필수 엔티티는 worker 실행 전에 `clarification`으로 즉시 종료 |
+| Plan | `QueryUnderstandingAgent` + `RetrievalPolicyBuilder` | normalized query | `QuerySpec`, `RetrievalPolicy` | 스키마 검증 실패 시 1회 repair, 재실패 시 결정적 fallback draft |
+| Act | worker 병렬 실행 + fusion/rerank + claim 생성 | `QuerySpec`, `RetrievalPolicy` | `WorkerResult`, `EvidenceBlock`, `AtomicClaim` | worker별 실패 코드(`TOOL_TIMEOUT`, `RETRIEVAL_EMPTY`, `ENTITY_UNRESOLVED` 등)를 결과 계약에 기록 |
+| Observe | `EvidenceRequirementGate` + `VerificationPipeline` | evidence, claims | `AnswerGateDecision`, `ClaimVerdict` | coverage/numeric/temporal/attribution 불일치를 reason_codes로 구조화 |
+| Reflect | `CriticAgent.diagnose()` | gate, worker_results, retries_remaining | `RecoveryDecision` | 재시도 가능 여부와 대체 채널을 코드 규칙으로 결정 |
+| Iterate | `Supervisor.authorize()` + `_run_recovery_worker()` | recovery decision | corrected answer / abstain / clarification | 동일 `(worker, input_hash, failure_code)` 재시도 한도 초과 시 안전 종료 |
 
 ---
 
@@ -140,117 +149,106 @@ class AgentOrchestrator:
 
 에이전트 계층에서는 아래 경계를 명확히 둔다.
 
-| 규칙 | 설명 |
+| 규칙 | 구현 위치 |
 |------|------|
-| Query Planner는 외부 API를 직접 호출하지 않는다 | planner는 질의 구조화에만 집중 |
-| Graph Retriever는 허용된 edge type과 hop 범위 안에서만 탐색한다 | retrieval noise 폭증 방지 |
-| Evidence Retriever는 PassageIndex와 graph evidence만 사용한다 | 임의의 근거 생성 금지 |
-| Causal Reasoner는 evidence 없는 직접 인과를 단정하지 않는다 | overclaim 방지 |
-| Answer Composer는 verification verdict를 무시할 수 없다 | unsupported claim이 감지되면 hedge 또는 abstain |
-| Risk Controller는 최종 응답 전에 반드시 실행된다 | safety/compliance 게이트 역할 |
+| Query Understanding Agent는 tool 이름이나 canonical entity ID를 직접 만들지 않는다 | `QueryUnderstandingAgent`가 surface만 추출, `DeterministicEntityResolver`가 확정 |
+| `evidence_needs`는 boolean이 아니라 `required`/`preferred`/`not_needed`이며 질의 키워드와 충돌하면 코드가 보정한다 | `QuerySpecValidator._validated_needs()` |
+| Graph Retrieval Worker는 허용된 edge type과 hop 범위 안에서만 탐색한다 | `GraphRetrievalWorker._edge_types()`, `min_edge_confidence` |
+| Retrieval Policy는 코드로만 결정하며 LLM이 채널을 직접 선택하지 않는다 | `RetrievalPolicyBuilder.build()` |
+| Claim Generator는 context에 없는 evidence ID를 인용할 수 없다 | `ClaimFirstGenerator.generate()`의 allowlist 검증 + repair |
+| 근거 없는 인과 단정 금지 — `PRECEDES`/`POSSIBLY_RELATED_AFTER`를 인과로 승격하지 않는다 | `CLAIM_SYSTEM_PROMPT` 규칙 + verifier의 `_relation_semantics()` |
+| Answer Gate를 통과하지 못한 claim은 최종 답변에 포함되지 않는다 | `_render_answer()`가 `gate.accepted_claim_ids`만 사용 |
+| retry budget은 정책과 Supervisor가 통제하며 무한 재시도를 허용하지 않는다 | `RetrievalPolicy.retry_budget`, `Supervisor.register_failure()` |
 
 추가로 금융 도메인 특화 제약을 둔다.
 
-- 투자 판단을 직접 권유하는 문장 금지
-- "확실", "보장", "반드시" 같은 과도한 확신 표현 금지
-- 최신성 확인이 불충분한 경우 "기준 시점"을 명시하거나 보수적 표현 사용
-- entity resolution ambiguity가 큰 경우 확정 표현 대신 불확실성 경고 포함
+- 투자 판단을 직접 권유하는 문장 금지, "확실", "보장", "반드시" 같은 과도한 확신 표현 억제
+- 최신성 확인이 불충분한 경우 `as_of`를 명시하고 보수적 표현 사용
+- entity resolution ambiguity가 큰 경우 확정 표현 대신 `clarification`으로 중단
 
 ---
 
 ## 7. Context Layer
 
-에이전트가 항상 참고해야 하는 정보는 문서 설명이 아니라 구조화된 context asset으로 관리하는 것이 이상적이다.
+에이전트가 항상 참고해야 하는 정보는 구조화된 context asset으로 관리한다.
 
-권장 자산은 다음과 같다.
-
-| 자산 | 역할 |
-|------|------|
-| ontology / schema snapshot | 이벤트 타입, entity 타입, edge 제약 |
-| prompt bundle version | 질문 해석과 답변 템플릿 버전 관리 |
-| eval slice definition | fact / temporal / causal / safety 질의 구분 |
-| failure taxonomy | F1~F8 오류 분류 기준 |
-| risk policy | 금지 문구, low-confidence 처리 규칙 |
-
-이 문서에서는 위 자산을 설명 형태로 정의하고, 향후 하네스 구현 시 executable format으로 내리는 것을 전제한다.
+| 자산 | 역할 | 구현 |
+|------|------|------|
+| ontology / schema snapshot | 이벤트 타입, entity 타입, edge 제약 | `ontology/`, `utils/schemas.py` |
+| prompt bundle version | 질문 해석과 claim 생성 프롬프트 버전 관리 | `AuditConfig.query_prompt_version`, `claim_prompt_version` |
+| retrieval/index snapshot | 재현 가능한 검색을 위한 evidence corpus 버전 | `EvidenceCatalog.snapshot_id` |
+| failure taxonomy | F1~F8 오류 분류 기준 | [00_overview.md §9](../00_overview.md) |
+| risk policy | 금지 문구, low-confidence 처리 규칙 | `harness/runtime.py`의 advice-risk 검사, `_render_answer()`의 고정 warning |
 
 ---
 
-## 8. Trace / Observability
+## 8. Verification Layer
 
-하네스에서 반드시 수집해야 하는 trace는 아래와 같다.
+| 검증 항목 | 구현 위치 |
+|-----------|------|
+| QuerySpec schema / entity / time 유효성 | `QuerySpecValidator` |
+| Evidence Requirement Gate (생성 이전) | `EvidenceRequirementGate.evaluate()` |
+| claim-evidence entailment | `DeterministicClaimVerifier.verify_pair()` (`entailment`) |
+| numeric/unit/currency/기간 일치 | `DeterministicClaimVerifier._verify_numeric()` |
+| 발화/서술 시점(`as_of`) 일치 | `DeterministicClaimVerifier._verify_temporal()` |
+| 발언자/기업/문서 귀속 | `DeterministicClaimVerifier._verify_attribution()` |
+| 관계 방향/인과 과장 방지 | `_relation_semantics()` |
+| citation coverage 임계값, critical claim 차단 | `AnswerGate.evaluate()` |
 
-### 8.1 Query-level trace
+핵심 원칙: 상충하는 지지·반박 evidence가 모두 유효하면 claim은 `conflict` 상태가 되어 최종 답변에서 임의로 한쪽을 선택하지 않고 양쪽을 함께 표시하거나 abstain한다.
 
-- raw user query
-- normalized query
-- planner output
-- confidence / risk class
+---
 
-### 8.2 Retrieval trace
+## 9. Feedback Loop Layer
 
-- seed node ids
-- retrieved node / edge ids
-- pruning 이전·이후 크기
-- temporal filter 적용 결과
-- missing gold seed 여부
+### 9.1 실패 상태 → Recovery Action
 
-### 8.3 Evidence trace
+| 실패 신호 | Critic 판정 | Supervisor 승인 시 액션 |
+|---|---|---|
+| graph worker 실패 / 필요한 관계 evidence 없음 | `REQUIRED_GRAPH_WORKER_FAILED`, `REQUIRED_GRAPH_EVIDENCE_MISSING` | `run_graph_retrieval` |
+| 수치·표/그림 evidence 없음, document worker 실패 | `REQUIRED_NUMERIC_EVIDENCE_MISSING`, `NUMERIC_MISMATCH`, `LOCATOR_MISSING` 등 | `run_document_block_retrieval` |
+| 원문 발언 evidence 없음, hybrid worker 실패, citation 부족 | `REQUIRED_PRIMARY_SOURCE_QUOTE_MISSING`, `INSUFFICIENT_PRIMARY_EVIDENCE`, `CITATION_COVERAGE_LOW` | `run_hybrid_text_retrieval` (동의어 확장 포함) |
+| 위 세 조건에 해당하지 않는 claim 실패 | 기타 claim 실패 | `remove_claim` |
+| entity ambiguous, worker 실행 전 | `ENTITY_AMBIGUOUS`/`ENTITY_UNRESOLVED` | `ask_clarification` |
+| 상충 evidence 발견 | `evidence_conflict` | `abstain` (임의 선택 금지) |
+| retries_remaining <= 0 | `RETRY_BUDGET_EXHAUSTED` | `abstain` |
 
-- selected evidence ids
-- evidence ranking signal
-- evidence text snippet
-- contradiction evidence 포함 여부
+Supervisor는 `config.supervisor.allowed_recovery_actions`에 없는 action은 자동으로 `abstain`으로 강등하고, `(worker, input_hash, failure_code)` 조합이 `max_same_failure_retries`를 넘으면 같은 원인으로는 더 이상 재시도하지 않는다.
 
-### 8.4 Reasoning / Answer trace
+### 9.2 Failure Taxonomy 연결
 
-- generated hypotheses
-- accepted / rejected hypotheses
-- checker verdict
-- final answer
-- cited evidence ids
-- risk flags
-- latency / token cost
+recovery 판정과 harness 사후 점검은 모두 [00_overview.md §9](../00_overview.md)의 F1~F8 코드로 태깅된다. 이 분류가 있어야 retrieval 병목인지 reasoning 병목인지 분리할 수 있다.
+
+---
+
+## 10. Trace / Observability
+
+`AgentRunResult`(orchestrator)와 `PipelineHarness.evaluate_online_query()`(harness/runtime.py)가 함께 아래 trace를 남긴다.
+
+### 10.1 CitationLedger (session 단위 불변 기록)
+
+- `query_id`, `request_timestamp`, tenant/user scope hash
+- `query_spec`, `retrieval_policy`, `memory_selection`(내용은 hash만 기록, 원문 비저장)
+- `tool_calls`: worker/selected_by/status/latency/output_ids/backend/snapshot_id
+- `llm_calls`: stage/model/prompt_version/temperature/input_hash/output_hash/status
+- `claim_evidence_mapping`, `claim_text_hashes`, `claim_verdicts`
+- `gate_history`, `recovery_history`
+- `final_answer_hash`, `config_hash`
+
+ledger 파일은 `config.audit.ledger_dir`에 session마다 하나씩, 덮어쓰기 불가능한 방식(`"x"` 모드)으로 저장된다.
+
+### 10.2 harness trace 파일
+
+`harness/runtime.py`는 online query 1회 실행마다 아래 파일을 `online_registry_dir`에 남긴다.
+
+- `query_trace.json` — raw/normalized query, planner confidence, risk class
+- `retrieval_trace.json` — seed/retrieved node·edge id, pruning 통계, retrieval mode
+- `evidence_trace.json` — event별 selected evidence id, ranking signal, contradiction 포함 여부
+- `reasoning_trace.json` — 생성된/채택된/기각된 hypothesis
+- `answer_trace.json` — 최종 답변, cited evidence id, risk flag, latency
+- `verification.json`, `orchestration_trace.json`(query_spec/policy/worker_results/claims/verdicts/ledger 요약), `run_record.json`
 
 이 trace가 있어야 "왜 틀렸는가"를 자동으로 읽을 수 있고, retrieval 문제인지 reasoning 문제인지 분리할 수 있다.
-
----
-
-## 9. Verification Layer
-
-온라인 계층의 기본 검증 포인트는 아래와 같다.
-
-| 검증 항목 | 설명 |
-|-----------|------|
-| intent / entity / temporal consistency | planner가 질의 구조를 제대로 해석했는지 |
-| subgraph relevance | 필요한 seed와 edge가 회수되었는지 |
-| evidence sufficiency | 핵심 주장당 최소 근거 수 충족 여부 |
-| contradiction inclusion | 반대 근거가 있을 때 함께 회수했는지 |
-| temporal consistency | 이벤트 순서와 시점이 뒤집히지 않았는지 |
-| unsupported claim rate | 근거 없는 주장 비율 |
-| advice risk score | 투자 권유/과도한 확신 정도 |
-
-정책적으로는 다음을 권장한다.
-
-- 핵심 주장에 evidence가 없으면 answer를 강등하거나 abstain
-- contradiction evidence가 있으면 summary에 병기
-- causal 표현은 최소 2개 이상의 독립 근거가 없으면 hedge 표현으로 완화
-
----
-
-## 10. Failure Case & Recovery
-
-대표적인 실패 케이스와 복구 전략은 다음과 같다.
-
-| 실패 케이스 | 원인 후보 | recovery |
-|-------------|-----------|----------|
-| KG Miss | seed 누락, subgraph recall 부족 | supplement 수집, retrieval expansion, 재시도 |
-| 근거 부족 답변 | evidence retrieval 부족 | evidence 재검색, claim 축소, abstain |
-| 시간축 오류 | temporal parse 실패, outdated evidence | 최신 문서 우선 재정렬, 기준 시점 명시 |
-| 과장된 인과 | checker 미통과, evidence 불충분 | causal claim을 "가능성/해석"으로 낮춤 |
-| 위험 표현 감지 | answer composer 문구 과장 | risk controller 후처리, 경고 추가 |
-
-self-repair는 무한 반복하지 않는다. 동일 failure class로 재시도가 누적되면 human review 또는 safe failure로 종료한다.
 
 ---
 
@@ -262,20 +260,23 @@ self-repair는 무한 반복하지 않는다. 동일 failure class로 재시도�
 - low-confidence output
 - repeated system failure
 
-구체적인 트리거 예시는 아래와 같다.
+구체적인 트리거:
 
-- entity ambiguity가 높고 핵심 answer에 직접 영향
-- evidence sufficiency가 임계값 미달
-- checker가 contradiction 또는 unsupported claim을 강하게 지적
-- risk controller가 투자 권유성 문장을 반복적으로 검출
+- entity ambiguity가 높고 핵심 answer에 직접 영향 (`clarification` 상태, `human_review_required` 아님 — 사용자에게 먼저 재질문)
+- Answer Gate가 `abstain`으로 종료 (`human_review_required = True`)
+- `PipelineHarness`가 advice-risk 키워드를 임계치 이상 감지 (F7)
+- 답변 confidence가 `human_review_confidence_threshold` 미만
+- Supervisor의 재시도 예산 소진
+
+`human_review_required = True`인 경우 `harness/runtime.py`가 `review_ticket`(run_id, risk_class, failure_codes, trace_paths)을 답변에 첨부한다.
 
 ---
 
 ## 12. 관련 문서
 
-- [02_query_planner.md](02_query_planner.md)
-- [03_graph_retriever.md](03_graph_retriever.md)
-- [04_evidence_retriever.md](04_evidence_retriever.md)
-- [05_causal_reasoner.md](05_causal_reasoner.md)
-- [06_risk_controller_and_answer_composer.md](06_risk_controller_and_answer_composer.md)
+- [02_query_understanding_and_routing.md](02_query_understanding_and_routing.md)
+- [03_retrieval_workers.md](03_retrieval_workers.md)
+- [04_evidence_and_claims.md](04_evidence_and_claims.md)
+- [05_verification_and_answer_gate.md](05_verification_and_answer_gate.md)
+- [06_recovery_memory_and_harness.md](06_recovery_memory_and_harness.md)
 - [../06_pipeline_runtime/02_online_query_pipeline.md](../06_pipeline_runtime/02_online_query_pipeline.md)

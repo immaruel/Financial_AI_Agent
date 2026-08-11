@@ -173,7 +173,7 @@ passage_index.passages[passage_id] = PassageRecord(
 )
 ```
 
-PassageIndex의 구조 정의는 [03_knowledge_graph/02_graph_schema.md §4](02_graph_schema.md)를 참조한다. 이 PassageIndex를 실제로 조회하는 쪽은 [04_agent_system/04_evidence_retriever.md §3.2](../04_agent_system/04_evidence_retriever.md)이다.
+PassageIndex의 구조 정의는 [03_knowledge_graph/02_graph_schema.md §4](02_graph_schema.md)를 참조한다. 이 PassageIndex를 실제로 조회하는 쪽은 [04_agent_system/03_retrieval_workers.md](../04_agent_system/03_retrieval_workers.md)와 [04_agent_system/04_evidence_and_claims.md](../04_agent_system/04_evidence_and_claims.md)이다.
 
 ---
 
@@ -187,7 +187,7 @@ PassageIndex의 구조 정의는 [03_knowledge_graph/02_graph_schema.md §4](02_
 
 ### Downstream
 - `InMemoryGraphStore` → 적재된 노드/엣지 보관
-- `agent/agents.py` → `GraphRetrieverAgent`가 `InMemoryGraphStore`를 탐색
+- `retrieval/graph.py` → `GraphRetrievalWorker`가 `InMemoryGraphStore`를 탐색 ([04_agent_system/03_retrieval_workers.md](../04_agent_system/03_retrieval_workers.md))
 - `main.py` → `save_graph()` / `load_graph()`로 JSON 직렬화
 
 ### 외부 의존성

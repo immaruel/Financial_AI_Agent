@@ -40,17 +40,17 @@ docs/
 │   ├── 02_graph_schema.md                      ← 노드/엣지 스키마, 적재/스킵 조건
 │   └── 03_graph_loader.md                      ← GraphPayloadBuilder, PassageIndex 구축
 │
-├── 04_agent_system/                            ← Agentic GraphRAG
-│   ├── 01_agent_architecture.md                ← 7개 에이전트 컴포넌트, 실행 루프, trace, recovery
-│   ├── 02_query_planner.md                     ← 질의 정규화, 의도 분류, 엔티티 추출
-│   ├── 03_graph_retriever.md                   ← Seed 탐색, hop/edge 전략, truncation
-│   ├── 04_evidence_retriever.md                ← PassageIndex 기반 원문 회수, 상충 탐지
-│   ├── 05_causal_reasoner.md                   ← 시간순/인과 재구성, CausalChain
-│   └── 06_risk_controller_and_answer_composer.md ← checker/composer/risk 제어
+├── 04_agent_system/                            ← Agentic GraphRAG (검증 가능한 멀티 에이전트 오케스트레이션)
+│   ├── 01_agent_architecture.md                ← 전체 컴포넌트, 실행 루프, contract, trace/ledger
+│   ├── 02_query_understanding_and_routing.md   ← QuerySpec, NeedLevel, Retrieval Policy Builder
+│   ├── 03_retrieval_workers.md                 ← Graph/Hybrid/Document-block worker, EvidenceBlock
+│   ├── 04_evidence_and_claims.md               ← Evidence Requirement Gate, Context Builder, Claim-first Generator
+│   ├── 05_verification_and_answer_gate.md      ← 결정적 Claim Verifier, Answer Gate
+│   └── 06_recovery_memory_and_harness.md       ← Critic/Supervisor 복구, 사용자 메모리, 위험 관리
 │
 ├── 05_config_and_schemas/
-│   ├── 01_pipeline_config.md                   ← 현재 Config + 하네스 확장 관리 항목
-│   └── 02_data_schemas.md                      ← 코어 스키마 + trace/eval/run schema
+│   ├── 01_pipeline_config.md                   ← 전체 Config와 하네스 확장 관리 항목
+│   └── 02_data_schemas.md                      ← 코어 스키마 + trace/eval/run/ledger schema
 │
 └── 06_pipeline_runtime/
     ├── 01_offline_pipeline.md                  ← offline flow, verification, regression gate
@@ -74,8 +74,13 @@ docs/
 | 이벤트 타입 계층 | [03_knowledge_graph/01_ontology.md](03_knowledge_graph/01_ontology.md) |
 | 노드/엣지 스키마 + 적재 조건 | [03_knowledge_graph/02_graph_schema.md](03_knowledge_graph/02_graph_schema.md) |
 | PassageIndex 구조 | [03_knowledge_graph/03_graph_loader.md](03_knowledge_graph/03_graph_loader.md) |
-| 에이전트 실행 루프와 recovery | [04_agent_system/01_agent_architecture.md](04_agent_system/01_agent_architecture.md) |
-| KG Miss와 self-repair | [06_pipeline_runtime/02_online_query_pipeline.md](06_pipeline_runtime/02_online_query_pipeline.md) |
+| 에이전트 전체 구조, 실행 루프, ledger | [04_agent_system/01_agent_architecture.md](04_agent_system/01_agent_architecture.md) |
+| QuerySpec 생성 프롬프트와 Retrieval Policy | [04_agent_system/02_query_understanding_and_routing.md](04_agent_system/02_query_understanding_and_routing.md) |
+| Graph/Hybrid/Document-block retrieval, EvidenceBlock 구조 | [04_agent_system/03_retrieval_workers.md](04_agent_system/03_retrieval_workers.md) |
+| Evidence Requirement Gate, Claim-first 생성 | [04_agent_system/04_evidence_and_claims.md](04_agent_system/04_evidence_and_claims.md) |
+| 결정적 수치·시간·귀속 검증, Answer Gate | [04_agent_system/05_verification_and_answer_gate.md](04_agent_system/05_verification_and_answer_gate.md) |
+| Critic/Supervisor 복구, 사용자 메모리, 위험 관리 | [04_agent_system/06_recovery_memory_and_harness.md](04_agent_system/06_recovery_memory_and_harness.md) |
+| KG Miss와 self-repair, 실시간 보완 수집 | [06_pipeline_runtime/02_online_query_pipeline.md](06_pipeline_runtime/02_online_query_pipeline.md) |
 | 오프라인 검증 포인트와 regression gate | [06_pipeline_runtime/01_offline_pipeline.md](06_pipeline_runtime/01_offline_pipeline.md) |
 | 설정과 CI/CD gate 관점의 버전 관리 | [05_config_and_schemas/01_pipeline_config.md](05_config_and_schemas/01_pipeline_config.md) |
-| trace / eval / run metadata schema | [05_config_and_schemas/02_data_schemas.md](05_config_and_schemas/02_data_schemas.md) |
+| trace / eval / run / ledger metadata schema | [05_config_and_schemas/02_data_schemas.md](05_config_and_schemas/02_data_schemas.md) |
