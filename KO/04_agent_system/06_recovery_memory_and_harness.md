@@ -74,7 +74,20 @@ def authorize(self, decision: RecoveryDecision) -> RecoveryDecision:
 
 ### 2.1 원칙
 
-사용자 메모리는 **사실 근거가 아니다.** 답변의 관점·비교 기준·관심 리스크를 정하는 보조 context일 뿐이며, 기업 사실 claim의 citation을 절대 대체하지 않는다. `UserMemoryStore`(`agent/memory.py`)는 질의 처리 과정에서 자동으로 메모리를 생성하지 않는다 — `write`/`create`/`update`/`delete`처럼 명시적으로 호출된 경우에만 메모리가 바뀐다.
+사용자 메모리는 **사실 근거가 아니다.** 답변의 관점·비교 기준·관심 리스크를 정하는 보조 context일 뿐이며, 기업 사실 claim의 citation을 절대 대체하지 않는다. 일반 질의 실행(`process_query`)은 메모리를 쓰지 않는다. 즉, 사용자의 모든 질문·답변·검색 evidence를 자동으로 프로필화하지 않는다.
+
+저장은 별도 lifecycle으로만 수행한다.
+
+```text
+사용자 발화(명시적 선호/피드백)
+  → MemoryLifecycleAgent (LLM: MemoryCandidateDraft JSON 제안만)
+  → 결정적 정책 검증 (허용 kind·민감/사실 내용·scope·확신도)
+  → pending_confirmation 또는 approved
+  → 사용자 확인 / 명시적 auto-commit 정책
+  → UserMemoryStore.create() / write()
+```
+
+LLM은 `tenant_id`, `user_id`, `memory_id`, `source`, 저장 권한을 만들거나 저장 API를 호출할 수 없다. 서버가 scope와 provenance를 부여한다. 기본값 `MemoryConfig.auto_commit_explicit=False`에서는 명시적 선호도도 확인을 거친다. 이를 `True`로 명시하고 confidence가 `min_auto_commit_confidence`(기본 0.90) 이상일 때만 명시적 후보를 자동 확정할 수 있다. 암묵 추정은 항상 확인이 필요하다.
 
 ### 2.2 저장 구조
 
@@ -92,10 +105,14 @@ def authorize(self, decision: RecoveryDecision) -> RecoveryDecision:
   "valid_until": null,
   "created_at": "2026-01-01T00:00:00+09:00",
   "source": "explicit_user_feedback",
-  "superseded_by": null
+  "superseded_by": null,
+  "persistence": "long_term",
+  "session_id": ""
 }
 ```
 
+- 후보(`MemoryCandidateDraft`)로 허용하는 `kind`는 `answer_format`, `investment_framework`, `risk_preference`, `watchlist`, `sector_exclusion`, `language_preference`, `citation_preference`뿐이다. evidence/citation/answer/company_fact/financial_result 및 credential·개인식별자 키는 정책이 거부한다. 따라서 “Acme 매출은 20% 증가했다”는 메모리가 아니라 검증할 research claim이다.
+- `persistence="turn"`은 같은 `session_id`의 **관련된 다음 한 질의**에서 선택되면 제거된다. `session`은 같은 `session_id`와 프로세스 수명 동안만 남는다. `long_term`만 opt-in encrypted store에 기록된다. 단기 메모리는 다른 세션에 보이지 않는다.
 - `anonymous`는 안정적인 사용자 식별자로 취급하지 않는다 — `user_id`가 비어 있거나 `anonymous`면 메모리 선택 자체를 `disabled`로 반환한다(다른 방문자에게 유출 방지).
 - `update()`는 기존 레코드를 직접 수정하지 않고 새 ID로 버저닝하며 이전 레코드에 `superseded_by`를 남긴다 — 과거에 감사된 답변이 어떤 선호 버전을 사용했는지 재현 가능하다.
 - 영속 저장(`persistent=True`)은 opt-in이며, `MemoryConfig.require_encryption=True`이면 Fernet 키가 없는 한 저장을 거부한다.
@@ -105,11 +122,11 @@ def authorize(self, decision: RecoveryDecision) -> RecoveryDecision:
 `QuerySpec`과 메모리 메타데이터만으로 결정적으로 계산한다 — LLM을 호출하지 않는다.
 
 ```text
-1. tenant/user 범위, valid_from/valid_until, superseded 여부로 유효 레코드만 남김
-2. 같은 kind/entities/industries/intents 조합(conflict key)에서 여러 활성 레코드가 있으면
+1. tenant/user 범위(단기 메모리는 같은 `session_id`), `valid_from`/`valid_until`, `superseded_by`로 유효 레코드만 남김
+2. 같은 `persistence/session_id/kind/entities/industries/intents` 조합(conflict key)에서 여러 활성 레코드가 있으면
    가장 최근 것만 채택하고 나머지는 conflict_shadowed_by_newer로 제외
-3. entity/industry/intent 태그가 질의와 겹치면 가점(태그가 있는 메모리 우선)
-4. 태그가 전혀 없는 메모리는 질의 원문과의 어휘 overlap만 fallback으로 사용
+3. entity 겹침 `+4.0`, industry 겹침 `+2.5`, intent/sub-intent 겹침 `+2.0`을 더한다(태그가 있는 메모리 우선)
+4. 태그가 전혀 없는 메모리만 질의 원문과 content의 어휘 overlap으로 `+1~2.0` fallback을 적용한다
 5. min_rule_score 미만은 제외, 점수 순으로 max_selected_memories/token_budget 안에서 선택
 ```
 
@@ -117,7 +134,9 @@ def authorize(self, decision: RecoveryDecision) -> RecoveryDecision:
 
 ### 2.4 답변에 노출되는 방식
 
-`ContextBuilder`가 메모리를 `[USER PREFERENCES — NOT FACTUAL EVIDENCE; NEVER CITE]` 섹션으로만 컨텍스트에 넣고, `ClaimFirstGenerator`의 프롬프트도 "사용자 메모리는 선호도일 뿐 사실 근거가 아니며 인용하지 않는다"를 명시한다. 최종 `StructuredAnswer.risk_warnings`에도 동일한 고지가 고정 문구로 포함된다.
+`ContextBuilder`는 선택된 메모리의 `memory_token_budget`을 **evidence/graph/timeline 조립 전에 예약**한다. 그 뒤 `[USER PREFERENCES — NOT FACTUAL EVIDENCE; NEVER CITE]` 섹션에 실제 주입된 것만 넣는다. 따라서 evidence가 context를 먼저 채워 선택된 메모리가 조용히 사라지지 않는다.
+
+`ContextBundle.memory_ids`는 실제 LLM context에 들어간 ID, `selected_memory_ids`는 retrieval이 선택한 ID, `omitted_memory_ids`/`memory_omission_reasons`는 예산 때문에 빠진 ID와 사유다. Citation ledger에는 원문 content 대신 hash, 선택·실제 주입 ID 및 omission count만 남긴다. `ClaimFirstGenerator`의 프롬프트도 "사용자 메모리는 선호도일 뿐 사실 근거가 아니며 인용하지 않는다"를 명시한다.
 
 ---
 

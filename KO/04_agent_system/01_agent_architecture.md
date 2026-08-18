@@ -37,6 +37,7 @@
 | Graph Retrieval Worker | `GraphRetrievalWorker` (`retrieval/graph.py`) | seed 탐색 → subgraph → path → EvidenceBlock 확장 | 사용 안 함 |
 | Hybrid / Document-block Retrieval Worker | `HybridRetrievalWorker` (`retrieval/hybrid.py`) | BM25 + BGE-M3 lexical/vector 검색, `document_blocks_only=True`이면 표/그림 전용 | 사용 안 함 |
 | Evidence Fusion & Rerank | `fuse_ranked_evidence` + `Reranker` (`retrieval/hybrid.py`) | 채널별 rank를 RRF로 융합하고 cross-encoder로 재정렬 | 사용 안 함(cross-encoder는 검색 전용 모델) |
+| Memory Lifecycle Agent | `MemoryLifecycleAgent` (`agent/memory_extraction.py`) | 명시적 사용자 선호/피드백 → 구조화 후보. 정책·확인 전에 저장 불가 | 후보 추출에만 사용 |
 | User Memory Store | `UserMemoryStore` (`agent/memory.py`) | tenant/user 범위의 개인화 메모리를 결정적 규칙으로 선택 | 사용 안 함 |
 | Context Builder | `ContextBuilder` (`agent/context_builder.py`) | QuerySpec/evidence/graph path/memory를 evidence-ID allowlist 컨텍스트로 조립 | 사용 안 함 |
 | Evidence Requirement Gate | `EvidenceRequirementGate` (`agent/requirements.py`) | 생성 이전에 `required` 근거 modality 충족 여부를 사전 차단 | 사용 안 함 |
@@ -53,7 +54,7 @@
 ## 4. 전체 실행 흐름
 
 ```text
-사용자 질의 + tenant_id + user_id + request_timestamp
+사용자 질의 + tenant_id + user_id + session_id + request_timestamp
         │
         ▼
 [1] QueryUnderstandingAgent.understand()
@@ -93,6 +94,8 @@
 CitationLedger 기록 → StructuredAnswer 반환
 ```
 
+메모리 **저장** 흐름은 위 온라인 질의 흐름과 별개다. `propose_user_memory()`가 LLM 후보를 만들고, `confirm_user_memory()` 또는 명시적으로 활성화한 auto-commit 정책이 `UserMemoryStore` write를 호출한다. 따라서 `process_request()`는 저장 권한이 없다.
+
 `agent/orchestrator.py`의 `process_request()`가 이 전체 루프를 실행한다.
 
 ```python
@@ -101,6 +104,7 @@ class AgentOrchestrator:
         self.query_understanding = QueryUnderstandingAgent(llm_client, entity_dict or {})
         self.policy_builder = RetrievalPolicyBuilder(config.retrieval, config.supervisor)
         self.memory_store = memory_store or UserMemoryStore(config.memory, ...)
+        self.memory_lifecycle = MemoryLifecycleAgent(config.memory, llm_client)
         self.context_builder = ContextBuilder(config.context)
         self.claim_generator = ClaimFirstGenerator(llm_client, config.audit)
         self.requirement_gate = EvidenceRequirementGate()

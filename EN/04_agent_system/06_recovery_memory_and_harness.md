@@ -74,7 +74,9 @@ Evidence gained from a retry is fused and reranked together with the existing ev
 
 ### 2.1 Principle
 
-User memory is **not factual evidence.** It is auxiliary context that shapes the answer's perspective, comparison baseline, or risk focus, and it never substitutes for a company-fact claim's citation. `UserMemoryStore` (`agent/memory.py`) never creates memory automatically while processing a query — memory changes only through explicit `write`/`create`/`update`/`delete` calls.
+User memory is **not factual evidence.** It is auxiliary context that shapes the answer's perspective, comparison baseline, or risk focus, and it never substitutes for a company-fact claim's citation. Normal `process_query` execution never writes memory: questions, answers, and retrieved evidence are not automatically turned into a profile.
+
+The separate write lifecycle is `user preference/feedback → MemoryLifecycleAgent (LLM proposes structured MemoryCandidateDraft only) → deterministic policy validation → pending confirmation or approved → UserMemoryStore.create/write`. The model cannot select tenant/user scope, provenance, IDs, or call a write API. By default `auto_commit_explicit=False`; even an explicit preference is confirmed. Auto-commit is possible only when that product policy is deliberately enabled and confidence meets `min_auto_commit_confidence` (0.90 by default). Implicit inferences always require confirmation.
 
 ### 2.2 Storage Structure
 
@@ -92,10 +94,14 @@ User memory is **not factual evidence.** It is auxiliary context that shapes the
   "valid_until": null,
   "created_at": "2026-01-01T00:00:00+09:00",
   "source": "explicit_user_feedback",
-  "superseded_by": null
+  "superseded_by": null,
+  "persistence": "long_term",
+  "session_id": ""
 }
 ```
 
+- Permitted candidate kinds are only `answer_format`, `investment_framework`, `risk_preference`, `watchlist`, `sector_exclusion`, `language_preference`, and `citation_preference`. Evidence/citation/answer/company-fact/financial-result keys and credentials or direct identifiers are rejected. A company result is a research claim, not a preference memory.
+- `turn` memory is removed after selection for one relevant query in the same `session_id`; `session` memory is process-local and visible only in that same session; only `long_term` can enter the opt-in encrypted store.
 - `anonymous` is never treated as a stable user identity — if `user_id` is empty or `anonymous`, memory selection returns `disabled` outright (to prevent leaking one visitor's preferences into another's).
 - `update()` never edits a record in place; it versions into a new ID and stamps the old record's `superseded_by`, so a past audited answer's preference version stays reproducible.
 - Persistent storage (`persistent=True`) is opt-in, and when `MemoryConfig.require_encryption=True`, writes are refused unless a Fernet key is configured.
@@ -105,12 +111,12 @@ User memory is **not factual evidence.** It is auxiliary context that shapes the
 Computed deterministically from `QuerySpec` and memory metadata alone — no LLM call.
 
 ```text
-1. Keep only records valid for the tenant/user scope, valid_from/valid_until, and not superseded
-2. If multiple active records share the same kind/entities/industries/intents combination
+1. Keep only records valid for tenant/user scope (and matching session_id for ephemeral records), valid_from/valid_until, and not superseded
+2. If multiple active records share the same persistence/session_id/kind/entities/industries/intents combination
    (a conflict key), keep only the most recent and exclude the rest as
    conflict_shadowed_by_newer
-3. Score up records whose entity/industry/intent tags overlap the query
-4. For untagged memories, fall back to lexical overlap with the raw query text only
+3. Add +4.0 for entity, +2.5 for industry, and +2.0 for intent/sub-intent overlap
+4. For entirely untagged memories only, add +1~2.0 for lexical overlap with the raw query text
 5. Drop anything below min_rule_score; select by score within max_selected_memories/token_budget
 ```
 
@@ -118,7 +124,7 @@ The selection result (`MemorySelection`) records `status`, `memory_ids`, `reason
 
 ### 2.4 How Memory Appears in the Answer
 
-`ContextBuilder` places memory only inside a `[USER PREFERENCES — NOT FACTUAL EVIDENCE; NEVER CITE]` section, and `ClaimFirstGenerator`'s prompt states explicitly that "user memory is a preference only, not factual evidence, and must not be cited." The final `StructuredAnswer.risk_warnings` also carries the same fixed disclosure.
+`ContextBuilder` reserves the selected memory budget *before* expanding evidence, graph paths, and timeline. It renders only actually injected records inside `[USER PREFERENCES — NOT FACTUAL EVIDENCE; NEVER CITE]`. `ContextBundle.memory_ids` means injected IDs; `selected_memory_ids`, `omitted_memory_ids`, and `memory_omission_reasons` distinguish selection from a budget omission. The ledger stores content hashes and these IDs/counts, never the raw preference content.
 
 ---
 

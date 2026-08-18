@@ -41,12 +41,13 @@ evidence가 아래를 모두 만족해야 "인용 가능(admissible)"으로 취�
 ### 3.1 조립 순서와 예산 관리
 
 ```text
-1. as_of 이후 발행된 evidence, 비인용/synthetic evidence 제외, content_hash로 중복 제거
-2. policy.evidence_budget 개수만큼 evidence 선택
-3. [QUERY SPEC] 섹션: query_id, 원 질문, intent, entities, time, evidence_needs
-4. [EVIDENCE BLOCKS] 섹션: 이 안의 evidence_id만 인용 가능하다고 명시
-5. mode != "hybrid_only"면 [GRAPH RELATION CONTEXT]와 [TIMELINE] 섹션 추가
-6. memory가 selected 상태면 [USER PREFERENCES — NOT FACTUAL EVIDENCE; NEVER CITE] 섹션 추가
+1. selected memory가 있으면 `memory_token_budget` 범위에서 완전한 memory record를 먼저 예약한다.
+2. as_of 이후 발행된 evidence, 비인용/synthetic evidence 제외, content_hash로 중복 제거
+3. 남은 context 예산 안에서 policy.evidence_budget 개수만큼 evidence 선택
+4. [QUERY SPEC] 섹션: query_id, 원 질문, intent, entities, time, evidence_needs
+5. [EVIDENCE BLOCKS] 섹션: 이 안의 evidence_id만 인용 가능하다고 명시
+6. mode != "hybrid_only"면 [GRAPH RELATION CONTEXT]와 [TIMELINE] 섹션 추가
+7. 예약에 실제 포함된 memory만 [USER PREFERENCES — NOT FACTUAL EVIDENCE; NEVER CITE] 섹션 추가
 ```
 
 `mode`는 `graph_hybrid`/`graph_primary`/`hybrid_only` 중 하나로, 선택된 채널 조합에서 결정적으로 계산된다.
@@ -57,7 +58,7 @@ evidence가 아래를 모두 만족해야 "인용 가능(admissible)"으로 취�
 
 ### 3.3 메모리는 별도 섹션, 별도 규칙
 
-사용자 메모리는 `[USER PREFERENCES — NOT FACTUAL EVIDENCE; NEVER CITE]` 헤더로 명확히 분리되고, evidence-ID allowlist에 포함되지 않는다. `ContextBundle.content_hash`는 렌더링된 전체 컨텍스트의 sha256으로, ledger가 "LLM에 실제로 무엇이 들어갔는지"를 재현할 수 있게 한다.
+사용자 메모리는 `[USER PREFERENCES — NOT FACTUAL EVIDENCE; NEVER CITE]` 헤더로 명확히 분리되고, evidence-ID allowlist에 포함되지 않는다. `ContextBundle.memory_ids`는 실제 주입 ID이며, `selected_memory_ids`/`omitted_memory_ids`/`memory_omission_reasons`로 선택과 주입 사이의 예산 누락을 구분한다. `ContextBundle.content_hash`는 렌더링된 전체 컨텍스트의 sha256이다.
 
 ---
 

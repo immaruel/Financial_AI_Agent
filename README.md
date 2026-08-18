@@ -79,14 +79,17 @@ flowchart TD
     end
 
     subgraph MEMORY[User Memory]
-        MS[UserMemoryStore\nFramework · Thesis · Feedback]
-        MW[Memory Write Agent\n사용자 피드백 기록]
+        MS[UserMemoryStore\nConfirmed preferences only]
+        MW[Memory Lifecycle Agent\nLLM candidate → policy/confirmation]
+        UF[Explicit preference / feedback]
     end
 
     MS --> MR
-    O --> MW
+    UF --> MW
     MW --> MS
 ```
+
+`O(답변)`에서 메모리 저장으로 향하는 화살표는 의도적으로 없다. 일반 질문·답변·검색 근거를 자동 저장하지 않으며, 별도의 사용자 선호/피드백 입력만 `MemoryCandidateDraft`(LLM structured output) → 결정적 정책 → 확인/명시적 auto-commit → `UserMemoryStore` 경로를 탄다. 저장된 메모리는 관련성이 있을 때만 context 예산을 예약해 evidence와 분리된 personalisation 섹션으로 주입된다.
 
 ## 먼저 이해할 핵심 구조
 
